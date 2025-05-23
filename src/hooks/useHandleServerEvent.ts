@@ -225,10 +225,10 @@ export function useHandleServerEvent({
             console.log("[handleFunctionCall] VERIFICATION_SUCCESS hint - showing success message before CHAT");
             // Show success message, then after delay transition to CHAT
             // Don't clear this UI immediately, it will be handled with delay
-            setTimeout(() => {
-              console.log("[handleFunctionCall] Transitioning from VERIFICATION_SUCCESS to CHAT");
-              setActiveDisplayMode('CHAT');
-            }, 3000); // Show success message for 3 seconds 
+            // setTimeout(() => {
+            //   console.log("[handleFunctionCall] Transitioning from VERIFICATION_SUCCESS to CHAT");
+            //   setActiveDisplayMode('CHAT');
+            // }, 3000); // Show success message for 3 seconds 
           } else if (fnResult.ui_display_hint === 'BOOKING_CONFIRMATION' && fnResult.booking_details) {
             console.log(`[handleFunctionCall] BOOKING_CONFIRMATION hint - showing booking details card`);
             if (setBookingDetails) {
