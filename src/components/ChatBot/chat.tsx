@@ -104,7 +104,7 @@ interface BookingDetails {
 export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { // Accept chatbotId prop
   // --- Existing UI State --- 
   const [inputVisible, setInputVisible] = useState(false)
-  const [micMuted, setMicMuted] = useState(false) // Start unmuted (enable VAD immediately)
+  const [micMuted, setMicMuted] = useState(true) // Start unmuted (enable VAD immediately)
   const [inputValue, setInputValue] = useState("")
   const [showProperties, setShowProperties] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)

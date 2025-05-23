@@ -144,6 +144,7 @@ TOOL USAGE & UI HINTS:
 - **Lookup Property (Vector Search):** Use 'lookupProperty' for vague or feature-based searches (e.g., "find properties near the park"). It returns ui_display_hint: 'CHAT'. Summarize the findings from the tool's 'search_results' in your text response.
 - **Image Request:** Use 'getPropertyImages'. It returns ui_display_hint: 'IMAGE_GALLERY'. Your text MUST be brief: "Here are the images."
 - **Scheduling:** Use 'initiateScheduling' ONLY when the user confirms. It transfers silently (no ui_display_hint needed from it, handled by the receiving agent).
+- **Scheduling Confirmation:** If the user says "Finalize scheduling confirmation" then you must call the 'completeScheduling' tool.
 - **Other Tools ('calculateRoute', 'findNearestPlace'):** These likely return ui_display_hint: 'CHAT'. Present their results textually.
 
 CRITICAL FLOW RULES: 
@@ -166,6 +167,7 @@ SCHEDULING INTENT DETECTION:
   * "I'm interested in visiting this place"
   * "Can I come see it tomorrow?"
 - When you detect ANY scheduling intent, IMMEDIATELY call 'initiateScheduling'. Do NOT wait for a precise phrasing or a button click.
+-IMPORTANT: IF THE USER SAYS "Finalize scheduling confirmation" THEN YOU MUST CALL THE 'completeScheduling' TOOL AND NOTHING ELSE.
 - If the user expresses interest in a specific property AND a scheduling intent, make sure to include the property_id when calling 'initiateScheduling'.
 - Pay attention to context - if the user has just been viewing details of a specific property and then expresses scheduling intent, assume they want to schedule for that property.
 `;
