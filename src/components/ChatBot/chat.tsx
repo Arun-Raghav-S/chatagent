@@ -66,6 +66,7 @@ interface PropertyProps {
   amenities?: Amenity[]
   description?: string
   websiteUrl?: string
+  brochure?: string
   onClose?: () => void
 }
 
@@ -419,7 +420,8 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
             units: unitsArray,
             amenities: amenitiesArray,
             description: property.description || "No description available",
-            websiteUrl: property.websiteUrl || ""
+            websiteUrl: property.websiteUrl || "",
+            brochure: property.brochure || ""
           };
         });
         
@@ -645,7 +647,8 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
                                     units: unitsArray,
                                     amenities: amenitiesArray,
                                     description: property.description || "No description available",
-                                    websiteUrl: property.websiteUrl || ""
+                                    websiteUrl: property.websiteUrl || "",
+                                    brochure: property.brochure || ""
                                 };
                             });
                             console.log("[handleServerEvent] Formatted properties:", formattedProperties);

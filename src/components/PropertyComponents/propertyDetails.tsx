@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef } from "react"
-import { X, Share, ExternalLink, MapPin, Maximize2 } from "lucide-react"
+import { X, ExternalLink, MapPin, Maximize2 } from "lucide-react"
 import ImageCarousel from "./imageCarousel"
 
 interface PropertyUnit {
@@ -35,6 +35,7 @@ interface PropertyDetailsProps {
   amenities?: Amenity[]
   description?: string
   websiteUrl?: string
+  brochure?: string
   onClose: () => void
   onScheduleVisit?: (property: PropertyDetailsProps) => void
 }
@@ -106,6 +107,7 @@ export default function PropertyDetails({
   amenities,
   description,
   websiteUrl,
+  brochure,
   onClose,
   onScheduleVisit
 }: PropertyDetailsProps) {
@@ -147,6 +149,8 @@ export default function PropertyDetails({
     const src = url || "/placeholder.svg";
     return failedImages.current.has(src) ? "/placeholder.svg" : src;
   };
+
+  console.log("BROCHURE", brochure);
 
   return (
     <div className="overflow-hidden rounded-lg text-black">
@@ -324,15 +328,24 @@ export default function PropertyDetails({
         {/* Actions */}
         <div className="p-3 border-t border-gray-200 flex justify-between">
           <button
-            onClick={() => onScheduleVisit?.({ id, name, price, area, location, mainImage, galleryImages, units, amenities, description, websiteUrl, onClose })}
+            onClick={() => onScheduleVisit?.({ id, name, price, area, location, mainImage, galleryImages, units, amenities, description, websiteUrl, brochure, onClose })}
             className="bg-blue-600 text-white px-4 py-2 rounded font-medium flex-1"
           >
             Schedule a Visit
           </button>
           
-          <button className="ml-2 bg-gray-100 p-2 rounded">
-            <Share size={18} />
-          </button>
+          {brochure && (
+            <button 
+              onClick={() => window.open(brochure, '_blank')}
+              className="ml-2 bg-green-100 hover:bg-green-200 p-2 rounded transition-colors"
+              title="Download Brochure"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 15L7 10H10V3H14V10H17L12 15Z" fill="currentColor"/>
+                <path d="M20 18H4V20H20V18Z" fill="currentColor"/>
+              </svg>
+            </button>
+          )}
         </div>
       </div>
     </div>
