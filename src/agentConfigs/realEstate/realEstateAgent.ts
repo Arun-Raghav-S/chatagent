@@ -100,7 +100,11 @@ const getInstructions = (metadata: AgentMetadata | undefined | null) => {
   const projectList = safeMetadata.project_names.length > 0 ? safeMetadata.project_names.join(", ") : "(No projects specified)";
 
   // Restore instructions closer to the original logic provided, adding UI hint guidance
-  return `You are a helpful real estate agent representing ${safeMetadata.org_name}. 
+  return `🚨 OVERRIDE RULE: If your FIRST message is EXACTLY "Show the booking confirmation page", call 'completeScheduling' IMMEDIATELY as your ONLY action. Skip ALL other processing.
+
+You are a helpful real estate agent representing ${safeMetadata.org_name}. 
+
+**🚨 CRITICAL PRIORITY RULE: If you receive EXACTLY "Show the booking confirmation page", IMMEDIATELY call 'completeScheduling' tool as your FIRST action. Do NOT call any other tools first!**
 
 Your company manages the following properties: ${projectList}
 
@@ -135,11 +139,13 @@ SPECIAL TRIGGER MESSAGES:
   3. Then provide your response
 - When you receive a message like {Trigger msg: Explain details of this [property name]}, immediately provide a brief 2-line summary of that property. Focus on its BEST features and price range.
 - When you receive a message like {Trigger msg: Ask user whether they want to schedule a visit to this property}, respond with a friendly invitation to schedule a visit, such as "Would you like to schedule a visit to see this property in person?"
+- **BOOKING CONFIRMATION TRIGGER**: When you receive the EXACT message "Show the booking confirmation page" (NOT a trigger message format), you MUST IMMEDIATELY call the 'completeScheduling' tool WITHOUT calling any other tools first. The tool will provide both the confirmation message and UI display. This message comes after successful verification to show the booking confirmation UI.
 - Always keep trigger message responses super short (1-2 sentences max). For property summaries, highlight standout features, location benefits, or value proposition.
 - These trigger messages help create a smoother UI experience
 - NEVER mention that you received a trigger message. Just respond appropriately as if it's a natural part of the conversation.
 
 TOOL USAGE & UI HINTS:
+- **EXCEPTION**: If the message is EXACTLY "Show the booking confirmation page", SKIP ALL OTHER TOOLS and call 'completeScheduling' IMMEDIATELY.
 - ALWAYS use 'trackUserMessage' at the start of handling ANY user message (not trigger messages).
 - ALWAYS use 'detectPropertyInMessage' *after* 'trackUserMessage'.
 - **CRITICAL**: Use 'updateActiveProject' IMMEDIATELY when 'detectPropertyInMessage' returns 'shouldUpdateActiveProject: true'. This is essential for trigger messages from property card selections to work correctly.
@@ -147,8 +153,8 @@ TOOL USAGE & UI HINTS:
 - **Specific Property Details Request:** When the user asks about ONE specific property, use 'getProjectDetails' with the project_id/name. It returns ui_display_hint: 'PROPERTY_DETAILS'. Your text message can be slightly more descriptive but still concise.
 - **Lookup Property (Vector Search):** Use 'lookupProperty' for vague or feature-based searches (e.g., "find properties near the park"). It returns ui_display_hint: 'CHAT'. Summarize the findings from the tool's 'search_results' in your text response.
 - **Image Request:** Use 'getPropertyImages'. It returns ui_display_hint: 'IMAGE_GALLERY'. Your text MUST be brief: "Here are the images."
-- **Scheduling:** Use 'initiateScheduling' ONLY when the user confirms. It transfers silently (no ui_display_hint needed from it, handled by the receiving agent).
-- **Scheduling Confirmation:** If the user says "Show the booking confirmation page" then you must call the 'completeScheduling' tool.
+- **Scheduling:** Use 'initiateScheduling' ONLY when the user confirms. Do NOT pass property_id parameter - let it use the active project automatically.
+- **CRITICAL - Booking Confirmation:** If you receive the message "Show the booking confirmation page", IMMEDIATELY call 'completeScheduling' tool without any text response. This is essential for showing the booking confirmation UI.
 - **Other Tools ('calculateRoute', 'findNearestPlace'):** These likely return ui_display_hint: 'CHAT'. Present their results textually.
 
 CRITICAL FLOW RULES: 
@@ -159,7 +165,8 @@ CRITICAL FLOW RULES:
 - ONLY ask about scheduling a visit if is_verified is true AND has_scheduled is false AND 'trackUserMessage' indicates it.
 - After calling 'initiateScheduling', YOU MUST NOT generate any text response.
 - **IMPORTANT AGENT TRANSFER RULE:** If ANY tool you call (e.g., 'trackUserMessage', 'initiateScheduling') returns a 'destination_agent' field in its result (signaling an agent transfer), YOU MUST NOT generate any text response yourself. Your turn ends silently, and the system will activate the destination agent.
-- After 'completeScheduling' is called by you or another tool AND it results in a 'BOOKING_CONFIRMATION' UI hint (because the booking is done), YOU MUST SAY THAT THE BOOKING IS CONFIRMED. The UI will display the confirmation.THE UI HINT IS BOOKING_CONFIRMATION.
+- **🚨 ABSOLUTE PRIORITY - BOOKING CONFIRMATION RULE:** If you receive EXACTLY "Show the booking confirmation page", STOP EVERYTHING and call 'completeScheduling' IMMEDIATELY. This overrides ALL other instructions. Do NOT call trackUserMessage. Do NOT call fetchOrgMetadata. Do NOT call detectPropertyInMessage. Do NOT call any other tools. FIRST ACTION = completeScheduling.
+- The 'completeScheduling' tool will return both the confirmation message for you to say AND the 'BOOKING_CONFIRMATION' UI hint to display the booking card.
 
 SCHEDULING INTENT DETECTION:
 - You must carefully analyze user messages for scheduling intent. Examples include:
@@ -170,10 +177,9 @@ SCHEDULING INTENT DETECTION:
   * "When can I come to view the property?"
   * "I'm interested in visiting this place"
   * "Can I come see it tomorrow?"
-- When you detect ANY scheduling intent, IMMEDIATELY call 'initiateScheduling'. Do NOT wait for a precise phrasing or a button click.
+- When you detect ANY scheduling intent, IMMEDIATELY call 'initiateScheduling' WITHOUT any property_id parameter. This will automatically use the current active project.
+- **CRITICAL:** Do NOT pass property_id when calling 'initiateScheduling' - omit it completely so the function uses the active project context automatically.
 -IMPORTANT: IF THE USER SAYS "Show the booking confirmation page" THEN YOU MUST CALL THE 'completeScheduling' TOOL AND NOTHING ELSE.
-- If the user expresses interest in a specific property AND a scheduling intent, make sure to include the property_id when calling 'initiateScheduling'.
-- Pay attention to context - if the user has just been viewing details of a specific property and then expresses scheduling intent, assume they want to schedule for that property.
 `;
 };
 
@@ -364,12 +370,21 @@ const realEstateAgent: AgentConfig = {
     {
       type: "function",
       name: "initiateScheduling",
-      description: "Internal tool: Triggers the scheduling flow by transferring to the scheduleMeeting agent silently. Use when the user explicitly agrees to schedule a visit (e.g., says 'yes' after being asked) or requests it directly.",
+      description: "Internal tool: Triggers the scheduling flow by transferring to the scheduleMeeting agent silently. Use when the user explicitly agrees to schedule a visit. Do NOT pass property_id - let it automatically use the active project.",
       parameters: {
         type: "object",
-        properties: {
-          property_id: { type: "string", description: "Optional. The ID of the specific property to schedule for. If omitted, the agent will use the active project." },
-        },
+        properties: {},
+        required: [],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: "function",
+      name: "completeScheduling",
+      description: "Internal tool: Completes the scheduling process and shows booking confirmation. Use when you receive 'Show the booking confirmation page' message.",
+      parameters: {
+        type: "object",
+        properties: {},
         required: [],
         additionalProperties: false,
       },
@@ -382,9 +397,21 @@ const realEstateAgent: AgentConfig = {
     trackUserMessage: async ({ message }: { message: string }) => {
         const metadata = realEstateAgent.metadata as AgentMetadata;
         
-        // Check for special trigger messages (other than "Show the booking confirmation page" which LLM handles based on its specific instruction)
-        if (message.startsWith('{Trigger msg:') && message !== "Show the booking confirmation page") {
-            console.log("[trackUserMessage] Detected special trigger message (not confirmation page):", message);
+        // Check for special booking confirmation trigger
+        if (message === "Show the booking confirmation page") {
+            console.log("[trackUserMessage] Detected booking confirmation trigger - directly calling completeScheduling");
+            // Return a direct function call to bypass any other processing
+            return {
+                function_call: {
+                    name: "completeScheduling",
+                    arguments: JSON.stringify({})
+                }
+            };
+        }
+
+        // Check for special trigger messages 
+        if (message.startsWith('{Trigger msg:')) {
+            console.log("[trackUserMessage] Detected special trigger message:", message);
             return { 
                 success: true, 
                 is_trigger_message: true, // Let LLM know it's a trigger
@@ -464,26 +491,14 @@ const realEstateAgent: AgentConfig = {
         const is_verified = metadata?.is_verified ?? false;
         const has_scheduled = metadata?.has_scheduled ?? false;
 
-        // Check for UI button scheduling message or natural language scheduling intent
+        // Check ONLY for UI button scheduling messages - let LLM handle natural language scheduling detection
+        // The LLM is much better at understanding nuanced scheduling requests than regex patterns
         // EXCLUDE "Show the booking confirmation page" as the LLM handles that based on its instructions.
         if (message !== "Show the booking confirmation page") {
             const scheduleRegex = /^Yes, I'd like to schedule a visit for (.+?)[.!]?$/i;
-            const scheduleRequestFromUiButton = message.startsWith("Yes, I'd like to schedule a visit for"); 
+            const scheduleRequestFromUiButton = message.startsWith("Yes, I'd like to schedule a visit for");
 
-            const schedulingIntentRegexes = [
-                /\b(schedule|book|arrange|set up|plan) .*?(visit|tour|viewing|showing|appointment|meeting)/i,
-                /\b(visit|tour|see|view) .*?(property|home|house|apartment|place) in person/i,
-                /\bcan i .*?(visit|tour|see|view|come)/i,
-                /\bwhen can i .*?(visit|tour|see|view|come)/i,
-                /\b(interested|want) .*?(visit|tour|see|view)/i,
-                /\bhow do i .*?(visit|tour|see|view)/i,
-                /\btake a look .*?(at|in person)/i,
-                /\bsite visit\b/i,
-                /^(yes|sure|okay|ok)$/i // Simple affirmative responses that might indicate scheduling agreement
-            ];
-            const hasSchedulingIntent = schedulingIntentRegexes.some(regex => regex.test(message));
-
-            if (scheduleRequestFromUiButton || hasSchedulingIntent) {
+            if (scheduleRequestFromUiButton) {
                 console.log(`[trackUserMessage] Scheduling intent detected: "${message}"`);
                 
                 let propertyName = null;
@@ -523,6 +538,12 @@ const realEstateAgent: AgentConfig = {
                 }
 
                 console.log(`[trackUserMessage] Scheduling with property: "${propertyName}" (ID: ${propertyIdToSchedule})`);
+                console.log(`[trackUserMessage] Current metadata state for debugging:`, {
+                    active_project: metadata?.active_project,
+                    active_project_id: metadataAny?.active_project_id,
+                    determined_property_name: propertyName,
+                    determined_property_id: propertyIdToSchedule
+                });
 
                 if (propertyIdToSchedule) {
                     return {
@@ -1117,70 +1138,22 @@ const realEstateAgent: AgentConfig = {
         }
     },
 
-    initiateScheduling: async ({ property_id: P_id_arg }: { property_id?: string }, transcript: TranscriptItem[] = []) => {
+    initiateScheduling: async ({}: {}, transcript: TranscriptItem[] = []) => {
         const metadata = realEstateAgent.metadata as AgentMetadata; 
         const metadataAny = metadata as any;
         
         let actualPropertyIdToSchedule: string | undefined = undefined;
         let propertyNameForScheduling: string | undefined = undefined;
 
-        console.log(`[initiateScheduling] DEBUG - Input property_id_arg: ${P_id_arg}`);
-        console.log("[initiateScheduling] DEBUG - Available metadata:");
-        console.log("  - P_id_arg param:", P_id_arg);
+        console.log("[initiateScheduling] DEBUG - Using active project context only");
         console.log("  - active_project_id:", metadataAny?.active_project_id);
         console.log("  - active_project:", metadata?.active_project);
         console.log("  - project_ids:", metadata?.project_ids);
         console.log("  - project_names:", metadataAny?.project_names);
         console.log("  - project_id_map:", metadataAny?.project_id_map);
         
-        if (P_id_arg) {
-            // Case 1: P_id_arg is a NAME and exists as a key in project_id_map
-            if (metadataAny?.project_id_map && metadataAny.project_id_map[P_id_arg]) {
-                propertyNameForScheduling = P_id_arg;
-                actualPropertyIdToSchedule = metadataAny.project_id_map[P_id_arg];
-                console.log(`[initiateScheduling] Resolved P_id_arg ('${P_id_arg}') as a NAME (key in project_id_map). ID: '${actualPropertyIdToSchedule}', Name: '${propertyNameForScheduling}'.`);
-            }
-            // Case 2: P_id_arg is an ID and exists as a value in project_id_map
-            else if (metadataAny?.project_id_map) {
-                for (const nameInMap in metadataAny.project_id_map) {
-                    if (metadataAny.project_id_map[nameInMap] === P_id_arg) {
-                        propertyNameForScheduling = nameInMap;
-                        actualPropertyIdToSchedule = P_id_arg;
-                        console.log(`[initiateScheduling] Resolved P_id_arg ('${P_id_arg}') as an ID (value in project_id_map). ID: '${actualPropertyIdToSchedule}', Name: '${propertyNameForScheduling}'.`);
-                        break;
-                    }
-                }
-            }
-
-            // Fallback: If not found via project_id_map, check project_names and project_ids arrays
-            if (!actualPropertyIdToSchedule && metadataAny?.project_names && metadataAny?.project_ids) {
-                // Check if P_id_arg is a name in project_names
-                const nameIndex = metadataAny.project_names.indexOf(P_id_arg);
-                if (nameIndex !== -1 && metadataAny.project_ids[nameIndex]) {
-                    propertyNameForScheduling = P_id_arg;
-                    actualPropertyIdToSchedule = metadataAny.project_ids[nameIndex];
-                    console.log(`[initiateScheduling] Resolved P_id_arg ('${P_id_arg}') as a NAME (in project_names array). ID: '${actualPropertyIdToSchedule}', Name: '${propertyNameForScheduling}'.`);
-                } else {
-                    // Check if P_id_arg is an ID in project_ids
-                    const idIndex = metadataAny.project_ids.indexOf(P_id_arg);
-                    if (idIndex !== -1 && metadataAny.project_names[idIndex]) {
-                        actualPropertyIdToSchedule = P_id_arg;
-                        propertyNameForScheduling = metadataAny.project_names[idIndex];
-                        console.log(`[initiateScheduling] Resolved P_id_arg ('${P_id_arg}') as an ID (in project_ids array). ID: '${actualPropertyIdToSchedule}', Name: '${propertyNameForScheduling}'.`);
-                    }
-                }
-            }
-            
-            // If P_id_arg was provided but couldn't be resolved, use it as name and ID will be undefined.
-            // This might happen if project_id_map is not perfectly synced or name is ambiguous.
-            if (!actualPropertyIdToSchedule && P_id_arg && !propertyNameForScheduling) {
-                propertyNameForScheduling = P_id_arg; // Assume P_id_arg is the intended name
-                actualPropertyIdToSchedule = undefined; // ID remains unknown
-                console.warn(`[initiateScheduling] P_id_arg ('${P_id_arg}') was provided but could not be mapped to a known ID. Using it as name. Scheduling agent may need to clarify.`);
-            }
-
-        } else if (metadataAny?.active_project_id) {
-            // No P_id_arg provided, use active project context
+        // Always use active project context - no property_id parameter accepted
+        if (metadataAny?.active_project_id) {
             actualPropertyIdToSchedule = metadataAny.active_project_id;
             propertyNameForScheduling = metadata?.active_project && metadata?.active_project !== "N/A" ? metadata.active_project : undefined;
             
@@ -1199,10 +1172,10 @@ const realEstateAgent: AgentConfig = {
                     if (idIndex !== -1) propertyNameForScheduling = metadataAny.project_names[idIndex];
                 }
             }
-            console.log(`[initiateScheduling] No P_id_arg, using active project. ID: '${actualPropertyIdToSchedule}', Name: '${propertyNameForScheduling}'.`);
+            console.log(`[initiateScheduling] Using active project. ID: '${actualPropertyIdToSchedule}', Name: '${propertyNameForScheduling}'.`);
         }
 
-        // Fallback to the first project if no specific context could be determined
+        // Fallback to the first project if no active project is set
         if (!actualPropertyIdToSchedule && !propertyNameForScheduling && metadata?.project_ids && metadata.project_ids.length > 0) {
             actualPropertyIdToSchedule = metadata.project_ids[0];
             if (metadata?.project_names && metadata.project_names.length > 0) {
@@ -1215,32 +1188,7 @@ const realEstateAgent: AgentConfig = {
                     }
                 }
             }
-            console.log(`[initiateScheduling] No specific context, falling back to first project. ID: '${actualPropertyIdToSchedule}', Name: '${propertyNameForScheduling}'.`);
-        }
-        
-        // Final consolidation: If ID is known but name isn't, or vice-versa, try one last time to sync them.
-        if (actualPropertyIdToSchedule && !propertyNameForScheduling) {
-            if (metadataAny?.project_id_map) {
-                for (const nameInMap in metadataAny.project_id_map) {
-                    if (metadataAny.project_id_map[nameInMap] === actualPropertyIdToSchedule) {
-                        propertyNameForScheduling = nameInMap;
-                        break;
-                    }
-                }
-            }
-            if (!propertyNameForScheduling && metadataAny?.project_ids && metadataAny?.project_names) {
-                 const idx = metadataAny.project_ids.indexOf(actualPropertyIdToSchedule);
-                 if (idx !== -1) propertyNameForScheduling = metadataAny.project_names[idx];
-            }
-            console.log(`[initiateScheduling] (Final Name Lookup) ID: '${actualPropertyIdToSchedule}', Determined Name: '${propertyNameForScheduling || 'unknown'}'.`);
-        } else if (!actualPropertyIdToSchedule && propertyNameForScheduling) {
-             if (metadataAny?.project_id_map && metadataAny.project_id_map[propertyNameForScheduling]) {
-                actualPropertyIdToSchedule = metadataAny.project_id_map[propertyNameForScheduling];
-             } else if (metadataAny?.project_names && metadataAny?.project_ids) {
-                const nameIdx = metadataAny.project_names.indexOf(propertyNameForScheduling);
-                if (nameIdx !== -1) actualPropertyIdToSchedule = metadataAny.project_ids[nameIdx];
-             }
-            console.log(`[initiateScheduling] (Final ID Lookup) Name: '${propertyNameForScheduling}', Determined ID: '${actualPropertyIdToSchedule || 'unknown'}'.`);
+            console.log(`[initiateScheduling] No active project, falling back to first project. ID: '${actualPropertyIdToSchedule}', Name: '${propertyNameForScheduling}'.`);
         }
         
         propertyNameForScheduling = propertyNameForScheduling || "the selected property";
@@ -1336,7 +1284,6 @@ const realEstateAgent: AgentConfig = {
         };
     },
     
-    // Mock implementation of completeScheduling for when transitioning from verification
     completeScheduling: async () => {
         console.log("[realEstateAgent.completeScheduling] Handling post-verification scheduling confirmation");
         
@@ -1363,9 +1310,13 @@ const realEstateAgent: AgentConfig = {
             // Make sure we have a property name (use defaults if not available)
             const propertyName = metadata.property_name || "the property";
             
-            // Create a friendly confirmation message
-            const confirmationMsg = `Great news, ${metadata.customer_name}! Your visit to ${propertyName} on ${dateToUse} at ${timeToUse} is confirmed! You'll receive all details shortly.`;
-            console.log("[realEstateAgent.completeScheduling] Confirming schedule with: ", confirmationMsg);
+            console.log("[realEstateAgent.completeScheduling] Processing booking confirmation with data:", {
+                customer_name: metadata.customer_name,
+                property_name: propertyName,
+                selectedDate: dateToUse,
+                selectedTime: timeToUse,
+                phone_number: metadata.phone_number
+            });
             
             // Mark as scheduled in agent metadata
             if (realEstateAgent.metadata) {
@@ -1443,10 +1394,13 @@ const realEstateAgent: AgentConfig = {
                 console.error("[realEstateAgent.completeScheduling] Error making API calls:", error);
             }
             
+            // Create confirmation message for the agent to say
+            const confirmationMessage = `Great news, ${metadata.customer_name}! Your visit to ${propertyName} has been scheduled for ${dateToUse} at ${timeToUse}. You'll receive all details shortly!`;
+            
             // Return success with confirmation message
             return {
                 success: true,
-                message: null, // << Agent should not speak; message is on the card
+                message: confirmationMessage, // Agent will say this confirmation message
                 ui_display_hint: 'BOOKING_CONFIRMATION', // New UI hint for the booking card
                 booking_details: {
                     customerName: metadata.customer_name,
@@ -1457,27 +1411,43 @@ const realEstateAgent: AgentConfig = {
                 }
             };
         } else {
-            // Handle missing data case
-            console.error("[realEstateAgent.completeScheduling] Missing required scheduling data", {
+            // Handle missing data case - but still try to show booking confirmation UI
+            console.warn("[realEstateAgent.completeScheduling] Some scheduling data missing, using fallback approach", {
                 selectedDate: metadata?.selectedDate,
                 appointment_date: metadata?.appointment_date,
                 selectedTime: metadata?.selectedTime,
                 appointment_time: metadata?.appointment_time,
-                customer_name: metadata?.customer_name
+                customer_name: metadata?.customer_name,
+                property_name: metadata?.property_name
             });
+            
+            // Try to construct fallback booking details
+            const fallbackBookingDetails = {
+                customerName: metadata?.customer_name || "Valued Customer",
+                propertyName: metadata?.property_name || metadata?.active_project || "the property",
+                date: dateToUse || metadata?.selectedDate || "your selected date",
+                time: timeToUse || metadata?.selectedTime || "your selected time",
+                phoneNumber: metadata?.phone_number || ""
+            };
             
             // Also clear scheduling specifics in the error/missing data case
             if (realEstateAgent.metadata) {
                 delete (realEstateAgent.metadata as any).flow_context; // Ensure flow_context is cleared
-                (realEstateAgent.metadata as AgentMetadata).selectedDate = undefined;
-                (realEstateAgent.metadata as AgentMetadata).selectedTime = undefined;
+                if (!dateToUse) (realEstateAgent.metadata as AgentMetadata).selectedDate = undefined;
+                if (!timeToUse) (realEstateAgent.metadata as AgentMetadata).selectedTime = undefined;
             }
-            // Return a generic message if we can't find the specific details
-            const genericMsg = "Your booking has been confirmed. Thank you!";
+            
+            console.log("[realEstateAgent.completeScheduling] Using fallback booking confirmation with:", fallbackBookingDetails);
+            
+            // Create fallback confirmation message
+            const fallbackMessage = `Great news, ${fallbackBookingDetails.customerName}! Your visit to ${fallbackBookingDetails.propertyName} has been scheduled for ${fallbackBookingDetails.date} at ${fallbackBookingDetails.time}. You'll receive all details shortly!`;
+            
+            // Still try to show the booking confirmation UI even with partial data
             return {
                 success: true,
-                message: genericMsg,
-                ui_display_hint: 'CHAT'
+                message: fallbackMessage, // Agent will say this confirmation message
+                ui_display_hint: 'BOOKING_CONFIRMATION', // Show booking confirmation UI anyway
+                booking_details: fallbackBookingDetails
             };
         }
     }

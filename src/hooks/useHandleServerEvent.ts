@@ -230,7 +230,7 @@ export function useHandleServerEvent({
             setTimeout(() => {
               console.log(`[handleFunctionCall] Transitioning from BOOKING_CONFIRMATION to CHAT`);
               setActiveDisplayMode('CHAT');
-            }, 10000); // 8 seconds delay to give more time to see the details
+            }, 15000); // 15 seconds delay to give more time to see the details
           }
           // If the mode is CHAT, data was already cleared.
         } else if (fnResult && !fnResult.destination_agent) {
@@ -528,6 +528,12 @@ export function useHandleServerEvent({
                 // Special handling for return to realEstate after scheduling verification
                 console.log("[handleFunctionCall] realEstate agent transfer after scheduling verification - triggering confirmation message");
                 
+                // Clear the flow context from the new agent's metadata to prevent loops
+                if (newAgentConfig.metadata) {
+                  delete (newAgentConfig.metadata as any).flow_context;
+                  console.log("[handleFunctionCall] Cleared flow_context from realEstate agent metadata");
+                }
+                
                 // Add a small delay to ensure the transfer is complete
                 setTimeout(() => {
                     // Send the trigger message directly without checking active response
@@ -621,6 +627,29 @@ export function useHandleServerEvent({
           if (fnResult.property_id && currentAgent.metadata) {
             console.log(`[handleFunctionCall] Storing property_id from getAvailableSlots: ${fnResult.property_id}`);
             (currentAgent.metadata as any).lastReturnedPropertyId = fnResult.property_id;
+          }
+          
+          // Send function output
+          sendClientEvent({
+            type: "conversation.item.create",
+            item: {
+              type: "function_call_output",
+              call_id: functionCallParams.call_id,
+              output: JSON.stringify(fnResult),
+            },
+          });
+          sendClientEvent({ type: "response.create" });
+          return; // Skip the regular function handling below
+        }
+
+        // Specific handling for completeScheduling
+        if (functionCallParams.name === "completeScheduling") {
+          console.log("[handleFunctionCall] completeScheduling called - ensuring proper processing:", fnResult);
+          
+          // This tool should ALWAYS return a booking confirmation message and UI hint
+          if (!fnResult.ui_display_hint) {
+            console.warn("[handleFunctionCall] completeScheduling did not return ui_display_hint, adding default");
+            fnResult.ui_display_hint = 'BOOKING_CONFIRMATION';
           }
           
           // Send function output
