@@ -129,6 +129,10 @@ LANGUAGE INSTRUCTIONS:
 
 SPECIAL TRIGGER MESSAGES:
 - Messages that start with {Trigger msg: ...} are NOT from the user. These are system triggers for specific automated responses.
+- **CRITICAL FLOW FOR TRIGGER MESSAGES**: 
+  1. ALWAYS call 'detectPropertyInMessage' first when processing trigger messages
+  2. If 'detectPropertyInMessage' returns shouldUpdateActiveProject: true, IMMEDIATELY call 'updateActiveProject' 
+  3. Then provide your response
 - When you receive a message like {Trigger msg: Explain details of this [property name]}, immediately provide a brief 2-line summary of that property. Focus on its BEST features and price range.
 - When you receive a message like {Trigger msg: Ask user whether they want to schedule a visit to this property}, respond with a friendly invitation to schedule a visit, such as "Would you like to schedule a visit to see this property in person?"
 - Always keep trigger message responses super short (1-2 sentences max). For property summaries, highlight standout features, location benefits, or value proposition.
@@ -138,7 +142,7 @@ SPECIAL TRIGGER MESSAGES:
 TOOL USAGE & UI HINTS:
 - ALWAYS use 'trackUserMessage' at the start of handling ANY user message (not trigger messages).
 - ALWAYS use 'detectPropertyInMessage' *after* 'trackUserMessage'.
-- Use 'updateActiveProject' ONLY IF 'detectPropertyInMessage' indicates it's needed.
+- **CRITICAL**: Use 'updateActiveProject' IMMEDIATELY when 'detectPropertyInMessage' returns 'shouldUpdateActiveProject: true'. This is essential for trigger messages from property card selections to work correctly.
 - **General Property List Request:** When the user asks for a general list (e.g., "show me your properties"), use 'getProjectDetails' without filters. It returns ui_display_hint: 'PROPERTY_LIST'. Your text MUST be brief: "Here are our projects that you can choose from. You can click on the cards below for more details. You can click on the cards below for more details."
 - **Specific Property Details Request:** When the user asks about ONE specific property, use 'getProjectDetails' with the project_id/name. It returns ui_display_hint: 'PROPERTY_DETAILS'. Your text message can be slightly more descriptive but still concise.
 - **Lookup Property (Vector Search):** Use 'lookupProperty' for vague or feature-based searches (e.g., "find properties near the park"). It returns ui_display_hint: 'CHAT'. Summarize the findings from the tool's 'search_results' in your text response.
@@ -474,7 +478,8 @@ const realEstateAgent: AgentConfig = {
                 /\b(interested|want) .*?(visit|tour|see|view)/i,
                 /\bhow do i .*?(visit|tour|see|view)/i,
                 /\btake a look .*?(at|in person)/i,
-                /\bsite visit\b/i
+                /\bsite visit\b/i,
+                /^(yes|sure|okay|ok)$/i // Simple affirmative responses that might indicate scheduling agreement
             ];
             const hasSchedulingIntent = schedulingIntentRegexes.some(regex => regex.test(message));
 
@@ -487,9 +492,23 @@ const realEstateAgent: AgentConfig = {
                     propertyName = propertyNameMatch ? propertyNameMatch[1]?.trim() : null;
                 }
                 
+                // Priority order for determining property:
+                // 1. Active project (most recently focused property)
+                // 2. Property name from message
+                // 3. First available property
                 if (!propertyName) {
-                    propertyName = metadata?.active_project || 
-                                   ((metadata as any)?.project_id_map ? Object.keys((metadata as any).project_id_map)[0] : null);
+                    // Get the most current active project
+                    const currentActiveProject = metadata?.active_project && metadata.active_project !== "N/A" ? 
+                                                 metadata.active_project : null;
+                    
+                    if (currentActiveProject) {
+                        propertyName = currentActiveProject;
+                        console.log(`[trackUserMessage] Using current active project: "${propertyName}"`);
+                    } else {
+                        // Fallback to first available project
+                        propertyName = ((metadata as any)?.project_id_map ? Object.keys((metadata as any).project_id_map)[0] : null);
+                        console.log(`[trackUserMessage] Using fallback project: "${propertyName}"`);
+                    }
                 }
 
                 const metadataAny = metadata as any;
@@ -503,17 +522,24 @@ const realEstateAgent: AgentConfig = {
                     propertyIdToSchedule = metadata.project_ids[0];
                 }
 
+                console.log(`[trackUserMessage] Scheduling with property: "${propertyName}" (ID: ${propertyIdToSchedule})`);
+
                 if (propertyIdToSchedule) {
                     return {
                         destination_agent: "scheduleMeeting",
                         property_id_to_schedule: propertyIdToSchedule,
                         property_name: propertyName, 
+                        // Also ensure active project context is passed
+                        active_project: propertyName,
+                        active_project_id: propertyIdToSchedule,
                         silentTransfer: true,
                         message: null 
                     };
                 } else {
                     return {
                         destination_agent: "scheduleMeeting",
+                        property_name: propertyName,
+                        active_project: propertyName,
                         silentTransfer: true,
                         message: null 
                     };
@@ -549,25 +575,54 @@ const realEstateAgent: AgentConfig = {
 
         // Skip processing for trigger messages to avoid unnecessary property detection
         if (message.startsWith('{Trigger msg:')) {
-            console.log("[detectPropertyInMessage] Skipping property detection for trigger message");
+            console.log("[detectPropertyInMessage] Processing trigger message for property detection");
             
-            // Extract property name from trigger message for context (if present)
-            const triggerPropertyRegex = /\{Trigger msg: (?:Explain details of this|Ask user whether they want to schedule a visit to this property) (.+?)\}/i;
+            // Extract property name from trigger message - be more flexible with the pattern
+            // Match any trigger message that contains "this" followed by a property name
+            const triggerPropertyRegex = /\{Trigger msg:.*?this\s+(.+?)(?:\s+in\s+brief|\s+\})/i;
             const match = message.match(triggerPropertyRegex);
             
             if (match && match[1]) {
-                const propertyNameFromTrigger = match[1].trim();
+                let propertyNameFromTrigger = match[1].trim();
+                
+                // Clean up common suffixes that might be captured
+                propertyNameFromTrigger = propertyNameFromTrigger.replace(/(\s+in\s+brief|\s+and\s+then.*|\s+\}).*$/i, '').trim();
+                
                 console.log(`[detectPropertyInMessage] Property name extracted from trigger: "${propertyNameFromTrigger}"`);
                 
-                // If this property is known, we should update active project
-                const isKnownProperty = (metadata?.project_names || []).includes(propertyNameFromTrigger);
+                // Find the closest matching property name from available projects
+                const project_names = metadata?.project_names || [];
+                let matchedProperty = null;
+                
+                // First try exact match
+                if (project_names.includes(propertyNameFromTrigger)) {
+                    matchedProperty = propertyNameFromTrigger;
+                } else {
+                    // Try case-insensitive match
+                    matchedProperty = project_names.find(p => 
+                        p.toLowerCase() === propertyNameFromTrigger.toLowerCase()
+                    );
+                    
+                    // If still no match, try partial match
+                    if (!matchedProperty) {
+                        matchedProperty = project_names.find(p => 
+                            p.toLowerCase().includes(propertyNameFromTrigger.toLowerCase()) ||
+                            propertyNameFromTrigger.toLowerCase().includes(p.toLowerCase())
+                        );
+                    }
+                }
 
-                return {
-                    propertyDetected: true,
-                    detectedProperty: propertyNameFromTrigger,
-                    shouldUpdateActiveProject: isKnownProperty, // Update active project if property from trigger is known
-                    isTriggerMessage: true
-                };
+                if (matchedProperty) {
+                    console.log(`[detectPropertyInMessage] Matched property: "${matchedProperty}" from trigger`);
+                    return {
+                        propertyDetected: true,
+                        detectedProperty: matchedProperty,
+                        shouldUpdateActiveProject: true, // Always update for trigger messages
+                        isTriggerMessage: true
+                    };
+                } else {
+                    console.log(`[detectPropertyInMessage] Property "${propertyNameFromTrigger}" not found in available projects:`, project_names);
+                }
             }
             
             return { 

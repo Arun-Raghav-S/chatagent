@@ -309,7 +309,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
     
     // Send a trigger message for the agent to explain this property
     setTimeout(() => {
-      sendTriggerMessage(`{Trigger msg: Explain details of this ${property.name}} in brief and then ask if they want to schedule a visit to this property`);
+      sendTriggerMessage(`{Trigger msg: Explain details of this ${property.name} in brief and then ask if they want to schedule a visit to this property}`);
       
     }, 500); // Small delay to ensure UI has updated first
   };

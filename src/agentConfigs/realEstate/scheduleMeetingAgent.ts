@@ -131,6 +131,9 @@ const scheduleMeetingAgent: AgentConfig = {
       console.log("[getAvailableSlots] DEBUG - metadata info:");
       console.log("  - property_id from param:", property_id);
       console.log("  - property_id_to_schedule from metadata:", (metadata as any)?.property_id_to_schedule);
+      console.log("  - property_name from metadata:", (metadata as any)?.property_name);
+      console.log("  - active_project from metadata:", metadata?.active_project);
+      console.log("  - active_project_id from metadata:", (metadata as any)?.active_project_id);
       console.log("  - project_ids from metadata:", metadata?.project_ids);
       console.log("  - is_verified:", metadata?.is_verified);
       
@@ -149,10 +152,19 @@ const scheduleMeetingAgent: AgentConfig = {
       
       // --- Get property name from metadata if available ---
       let propertyName = "this property";
-      if (metadata?.active_project && metadata.active_project !== "N/A") {
-        propertyName = metadata.active_project;
-      } else if ((metadata as any)?.property_name) {
+      
+      // Priority order for property name:
+      // 1. property_name from transfer context (most specific)
+      // 2. active_project from real estate agent
+      // 3. fallback to generic name
+      if ((metadata as any)?.property_name) {
         propertyName = (metadata as any).property_name;
+        console.log(`[getAvailableSlots] Using property_name from transfer context: ${propertyName}`);
+      } else if (metadata?.active_project && metadata.active_project !== "N/A") {
+        propertyName = metadata.active_project;
+        console.log(`[getAvailableSlots] Using active_project: ${propertyName}`);
+      } else {
+        console.log(`[getAvailableSlots] Using fallback property name: ${propertyName}`);
       }
       
       const slots: Record<string, string[]> = {};
@@ -166,6 +178,8 @@ const scheduleMeetingAgent: AgentConfig = {
 
       const agentMessage = `Hello! I'm here to help you schedule a visit to ${propertyName}. Please select a date for your visit from the calendar below.`;
 
+      console.log(`[getAvailableSlots] Returning result with property_name: "${propertyName}"`);
+      
       return { 
         slots: slots,
         timeSlots: standardTimeSlots,

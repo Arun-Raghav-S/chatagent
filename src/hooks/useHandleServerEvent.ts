@@ -234,61 +234,71 @@ export function useHandleServerEvent({
           }
           // If the mode is CHAT, data was already cleared.
         } else if (fnResult && !fnResult.destination_agent) {
-          // If no specific UI hint, but not a transfer, default to CHAT to ensure messages are visible.
-          // Avoids getting stuck on a previous UI if a tool runs silently or only returns a message.
-          console.log("[handleFunctionCall] No UI hint from tool, defaulting to CHAT display mode.");
+          // If no specific UI hint, but not a transfer, we need to be careful about when to default to CHAT
+          // to avoid closing property details when processing trigger messages
           
-          // If this is a verification result, delay setting activeDisplayMode back to CHAT to 
-          // allow verification success UI to be visible longer
-          if (fnResult && fnResult.verified === true) {
-            console.log("[handleFunctionCall] Delaying CHAT mode after successful verification");
-            setTimeout(() => {
-              // If there's scheduling data, ensure we process it correctly
-              const metadataAny = currentAgent.metadata as any;
-              let hasTriggeredConfirmation = false;
-              
-              setTimeout(() => {
-                if (metadataAny?.selectedDate && metadataAny?.selectedTime && metadataAny?.property_name && !hasTriggeredConfirmation) {
-                  console.log("[handleFunctionCall] Found scheduling data after verification");
-                  hasTriggeredConfirmation = true;
-                  
-                  // Call completeScheduling to show the confirmation message
-                  const toolFunction = currentAgent?.toolLogic?.completeScheduling;
-                  if (typeof toolFunction === 'function') {
-                    console.log("[handleFunctionCall] Calling completeScheduling to show booking confirmation");
-                    toolFunction({}, transcriptItems || []).then((result: any) => {
-                      if (result.message) {
-                        const newMessageId = generateSafeId();
-                        sendClientEvent({
-                          type: "conversation.item.create", 
-                          item: {
-                            id: newMessageId,
-                            type: "message",
-                            role: "assistant",
-                            content: [{ type: "text", text: result.message }]
-                          }
-                        }, "(scheduling confirmation message)");
-                        
-                        // Set a small delay before transitioning to CHAT mode
-                        setTimeout(() => {
-                          setActiveDisplayMode('CHAT');
-                        }, 1000);
-                      }
-                    });
-                  }
-                } else {
-                  // If no scheduling data, just transition to CHAT mode
-                  setActiveDisplayMode('CHAT');
-                }
-              }, 3000);
-            }, 3000);
+          // Check if this is a trigger message processing (detectPropertyInMessage or updateActiveProject)
+          // and we're currently showing property details - in that case, preserve the current mode
+          const isPropertyRelatedTool = functionCallParams.name === 'detectPropertyInMessage' || functionCallParams.name === 'updateActiveProject';
+          
+          if (isPropertyRelatedTool) {
+            console.log(`[handleFunctionCall] Property-related tool "${functionCallParams.name}" executed, preserving current display mode`);
+            // Don't change the display mode for property-related tools
           } else {
-            setActiveDisplayMode('CHAT');
+            console.log("[handleFunctionCall] No UI hint from tool, defaulting to CHAT display mode.");
+            
+            // If this is a verification result, delay setting activeDisplayMode back to CHAT to 
+            // allow verification success UI to be visible longer
+            if (fnResult && fnResult.verified === true) {
+              console.log("[handleFunctionCall] Delaying CHAT mode after successful verification");
+              setTimeout(() => {
+                // If there's scheduling data, ensure we process it correctly
+                const metadataAny = currentAgent.metadata as any;
+                let hasTriggeredConfirmation = false;
+                
+                setTimeout(() => {
+                  if (metadataAny?.selectedDate && metadataAny?.selectedTime && metadataAny?.property_name && !hasTriggeredConfirmation) {
+                    console.log("[handleFunctionCall] Found scheduling data after verification");
+                    hasTriggeredConfirmation = true;
+                    
+                    // Call completeScheduling to show the confirmation message
+                    const toolFunction = currentAgent?.toolLogic?.completeScheduling;
+                    if (typeof toolFunction === 'function') {
+                      console.log("[handleFunctionCall] Calling completeScheduling to show booking confirmation");
+                      toolFunction({}, transcriptItems || []).then((result: any) => {
+                        if (result.message) {
+                          const newMessageId = generateSafeId();
+                          sendClientEvent({
+                            type: "conversation.item.create", 
+                            item: {
+                              id: newMessageId,
+                              type: "message",
+                              role: "assistant",
+                              content: [{ type: "text", text: result.message }]
+                            }
+                          }, "(scheduling confirmation message)");
+                          
+                          // Set a small delay before transitioning to CHAT mode
+                          setTimeout(() => {
+                            setActiveDisplayMode('CHAT');
+                          }, 1000);
+                        }
+                      });
+                    }
+                  } else {
+                    // If no scheduling data, just transition to CHAT mode
+                    setActiveDisplayMode('CHAT');
+                  }
+                }, 3000);
+              }, 3000);
+            } else {
+              setActiveDisplayMode('CHAT');
+            }
+            
+            setPropertyListData(null);
+            setSelectedPropertyDetails(null);
+            setPropertyGalleryData(null);
           }
-          
-          setPropertyListData(null);
-          setSelectedPropertyDetails(null);
-          setPropertyGalleryData(null);
         }
         // --- End of Centralized UI Update Logic ---
 
@@ -326,6 +336,19 @@ export function useHandleServerEvent({
               
               came_from: cameFromContext, // Explicitly set came_from
             };
+
+            // Debug log to check if property information is being transferred correctly
+            console.log("[handleFunctionCall] Transfer debug - fnResult property fields:", {
+              property_name: (fnResult as any)?.property_name,
+              property_id_to_schedule: (fnResult as any)?.property_id_to_schedule,
+              active_project: (fnResult as any)?.active_project,
+              active_project_id: (fnResult as any)?.active_project_id
+            });
+            console.log("[handleFunctionCall] Transfer debug - currentAgent metadata property fields:", {
+              property_name: (currentAgent.metadata as any)?.property_name,
+              active_project: currentAgent.metadata?.active_project,
+              active_project_id: (currentAgent.metadata as any)?.active_project_id
+            });
 
             // Clean up transfer-control fields from the final metadata object
             delete (newAgentPreparedMetadata as any).destination_agent;
