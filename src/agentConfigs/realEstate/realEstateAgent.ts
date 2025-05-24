@@ -1,10 +1,5 @@
 import { AgentConfig, AgentMetadata as BaseAgentMetadata, TranscriptItem } from "@/types/types"; // Adjusted path
-// Supabase/Langchain imports commented out - using edge function instead
-// import supabaseAdmin from "@/app/lib/supabaseClient"; // Requires setup in new project
-// import { OpenAIEmbeddings } from "@langchain/openai";
-// import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase";
 
-// Extend the AgentMetadata type to include project_id_map
 interface AgentMetadata extends BaseAgentMetadata {
   project_id_map?: Record<string, string>; // Map project names to their IDs
   active_project_id?: string; // Current active project ID for direct reference
@@ -25,45 +20,7 @@ interface PropertyDetectionResult {
   schedulePropertyId?: string | null;
 }
 
-// Define necessary UI prop types locally for mapping
-/*
-interface PropertyLocation {
-  city?: string;
-  mapUrl?: string;
-  coords?: string;
-}
 
-interface PropertyImageForMapping {
-  url?: string;
-  alt?: string;
-  description?: string;
-}
-
-interface PropertyUnitForMapping {
-  type: string;
-}
-
-interface AmenityForMapping {
-  name: string;
-}
-
-interface PropertyProps {
-  id?: string;
-  name?: string;
-  price?: string;
-  area?: string;
-  location?: PropertyLocation;
-  mainImage?: string;
-  galleryImages?: PropertyImageForMapping[];
-  units?: PropertyUnitForMapping[];
-  amenities?: AmenityForMapping[];
-  description?: string;
-  websiteUrl?: string;
-}
-*/
-
-// Required Environment Variables: NEXT_PUBLIC_SUPABASE_ANON_KEY
-// Optional Environment Variables: NEXT_PUBLIC_TOOLS_EDGE_FUNCTION_URL (defaults provided)
 
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const toolsEdgeFunctionUrl = process.env.NEXT_PUBLIC_TOOLS_EDGE_FUNCTION_URL || "https://dashboard.propzing.in/functions/v1/realtime_tools";
