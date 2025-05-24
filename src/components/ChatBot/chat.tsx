@@ -582,7 +582,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
         typeof serverEvent.item.content[0].text === 'string' &&
         (
             serverEvent.item.content[0].text.startsWith('{Trigger msg:') ||
-            serverEvent.item.content[0].text === "Finalize scheduling confirmation"
+            serverEvent.item.content[0].text === "Show the booking confirmation page"
         )
     ) {
       
@@ -2103,7 +2103,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
     stopCurrentResponse(sendClientEvent);
     
     const triggerMessageId = generateSafeId();
-    const confirmationTriggerText = "Finalize scheduling confirmation";
+    const confirmationTriggerText = "Show the booking confirmation page";
     console.log(`[UI] Sending trigger message to realEstate agent: '${confirmationTriggerText}'`);
     
     // Send the trigger message (not added to visible transcript)

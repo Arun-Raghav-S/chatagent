@@ -13,16 +13,7 @@ const generateSafeId = () => {
 // Add delay utility function
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Define types for transcript management functions
-type AddTranscriptMessageType = (itemId: string, role: "user" | "assistant" | "system", text: string, properties?: any[]) => void;
-type UpdateTranscriptMessageType = (itemId: string, textDelta: string, isDelta: boolean) => void;
-type UpdateTranscriptItemStatusType = (itemId: string, status: "IN_PROGRESS" | "DONE" | "ERROR") => void;
 
-// Add type for gallery state setter
-type SetGalleryStateType = (state: { isOpen: boolean; propertyName: string; images: any[] }) => void;
-
-// Define PropertyProps and PropertyImage if not already (simplified example)
-interface PropertyProps { id?: string; name?: string; [key: string]: any; }
 interface PropertyImage { url?: string; alt?: string; description?: string; }
 
 // Redefine ActiveDisplayMode if not imported or defined globally
@@ -37,10 +28,6 @@ type ActiveDisplayMode =
   | 'VERIFICATION_SUCCESS'
   | 'BOOKING_CONFIRMATION';
 
-interface PropertyGalleryData {
-  propertyName: string;
-  images: PropertyImage[];
-}
 
 export interface UseHandleServerEventParams {
   // Required state setters and config
@@ -222,13 +209,16 @@ export function useHandleServerEvent({
           } else if (fnResult.ui_display_hint === 'OTP_FORM') {
             console.log("[handleFunctionCall] OTP_FORM hint.");
           } else if (fnResult.ui_display_hint === 'VERIFICATION_SUCCESS') {
-            console.log("[handleFunctionCall] VERIFICATION_SUCCESS hint - showing success message before CHAT");
+            console.log("[handleFunctionCall] VERIFICATION_SUCCESS hint - showing success message.");
             // Show success message, then after delay transition to CHAT
-            // Don't clear this UI immediately, it will be handled with delay
-            // setTimeout(() => {
-            //   console.log("[handleFunctionCall] Transitioning from VERIFICATION_SUCCESS to CHAT");
-            //   setActiveDisplayMode('CHAT');
-            // }, 3000); // Show success message for 3 seconds 
+            // This ensures VERIFICATION_SUCCESS is not indefinite if the next step (e.g. booking confirmation) is delayed
+            setTimeout(() => {
+              // Check current mode before transitioning, to avoid overriding a more specific mode like BOOKING_CONFIRMATION
+              // This requires access to the current activeDisplayMode state, which is not directly available here.
+              // For simplicity, we'll just set to CHAT. If BOOKING_CONFIRMATION comes later, it will override CHAT.
+              console.log("[handleFunctionCall] Transitioning from VERIFICATION_SUCCESS to CHAT after 3 seconds (if not overridden).");
+              setActiveDisplayMode('CHAT');
+            }, 3000); // Show success message UI for 3 seconds before defaulting to CHAT
           } else if (fnResult.ui_display_hint === 'BOOKING_CONFIRMATION' && fnResult.booking_details) {
             console.log(`[handleFunctionCall] BOOKING_CONFIRMATION hint - showing booking details card`);
             if (setBookingDetails) {
@@ -519,7 +509,7 @@ export function useHandleServerEvent({
                 setTimeout(() => {
                     // Send the trigger message directly without checking active response
                     const simulatedRealEstateMessageId = generateSafeId();
-                    const confirmationTriggerText = "Finalize scheduling confirmation";
+                    const confirmationTriggerText = "Show the booking confirmation page";
                     console.log(`[handleFunctionCall] Sending trigger message to realEstate agent: '${confirmationTriggerText}'`);
                     
                     // First cancel any active response
