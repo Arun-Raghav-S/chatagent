@@ -1209,7 +1209,7 @@ const realEstateAgent: AgentConfig = {
             console.error("[getPropertyImages] Missing NEXT_PUBLIC_SUPABASE_ANON_KEY.");
             return { 
               error: "Server configuration error.", 
-              ui_display_hint: 'CHAT', // Revert to chat on error
+              ui_display_hint: 'CHAT',
               message: "Sorry, I couldn't fetch images due to a server configuration issue."
             };
         }
@@ -1223,6 +1223,59 @@ const realEstateAgent: AgentConfig = {
         }
 
         try {
+            // Step 1: Get property details images first
+            let propertyDetailsImages: any[] = [];
+            
+            console.log(`[getPropertyImages] First fetching property details for: ${targetPropertyForName}`);
+            
+            // Determine project_id for getProjectDetails call
+            let project_id_for_details = null;
+            const metadataAny = metadata as any;
+            
+            // Try to get project_id from various sources
+            if (metadataAny?.project_id_map && metadataAny.project_id_map[targetPropertyForName]) {
+                project_id_for_details = metadataAny.project_id_map[targetPropertyForName];
+            } else if (metadataAny?.active_project_id && targetPropertyForName === metadata?.active_project) {
+                project_id_for_details = metadataAny.active_project_id;
+            }
+            
+            // Call getProjectDetails to get property images
+            const projectDetailsParams = project_id_for_details 
+                ? { project_id: project_id_for_details }
+                : { project_name: targetPropertyForName };
+            
+            const projectDetailsResult = await realEstateAgent.toolLogic?.getProjectDetails?.(projectDetailsParams, transcript);
+            
+            if (projectDetailsResult && !projectDetailsResult.error) {
+                // Extract images from property details
+                if (projectDetailsResult.property_details && projectDetailsResult.property_details.images) {
+                    // Handle case where getProjectDetails returns a single property
+                    propertyDetailsImages = projectDetailsResult.property_details.images.map((img: any) => ({
+                        url: img.url || img.image_url,
+                        alt: img.alt || img.description || `${targetPropertyForName} image`,
+                        description: img.description || img.alt
+                    }));
+                    console.log(`[getPropertyImages] Found ${propertyDetailsImages.length} images from property details`);
+                } else if (projectDetailsResult.properties && Array.isArray(projectDetailsResult.properties) && projectDetailsResult.properties.length > 0) {
+                    // Handle case where getProjectDetails returns array of properties
+                    const matchingProperty = projectDetailsResult.properties.find((prop: any) => 
+                        prop.name?.toLowerCase() === targetPropertyForName.toLowerCase()
+                    ) || projectDetailsResult.properties[0]; // Use first property as fallback
+                    
+                    if (matchingProperty && matchingProperty.images) {
+                        propertyDetailsImages = matchingProperty.images.map((img: any) => ({
+                            url: img.url || img.image_url,
+                            alt: img.alt || img.description || `${targetPropertyForName} image`,
+                            description: img.description || img.alt
+                        }));
+                        console.log(`[getPropertyImages] Found ${propertyDetailsImages.length} images from property details (from array)`);
+                    }
+                }
+            }
+
+            // Step 2: Get additional images from edge function
+            console.log(`[getPropertyImages] Now fetching additional images from edge function`);
+            
             const response = await fetch(
                 toolsEdgeFunctionUrl,
                 {
@@ -1233,7 +1286,7 @@ const realEstateAgent: AgentConfig = {
                     },
                     body: JSON.stringify({
                         action: "getPropertyImages",
-                        property_name: targetPropertyForName, // Use the determined name
+                        property_name: targetPropertyForName,
                         query,
                         project_ids,
                     }),
@@ -1241,36 +1294,50 @@ const realEstateAgent: AgentConfig = {
             );
 
             const result = await response.json();
+            let additionalImages: any[] = [];
 
-            if (!response.ok || result.error) {
-                console.error("[getPropertyImages] Edge function error:", result.error || response.statusText);
-                return { 
-                  error: result.error || "Error fetching property images.",
-                  ui_display_hint: 'CHAT',
-                  message: result.error ? `Sorry, I couldn't fetch images: ${result.error}` : "Sorry, an error occurred while fetching images."
-                };
+            if (response.ok && !result.error && result.images && result.images.length > 0) {
+                additionalImages = result.images.map((img: any) => ({
+                    url: img.image_url || img.url,
+                    alt: img.description || img.alt || `${targetPropertyForName} additional image`,
+                    description: img.description || img.alt
+                }));
+                console.log(`[getPropertyImages] Found ${additionalImages.length} additional images from edge function`);
             }
 
-            console.log("[getPropertyImages] Received property images result:", result);
+            // Step 3: Merge images with property details first, then additional images
+            const allImages = [...propertyDetailsImages];
+            
+            // Add additional images, but avoid duplicates based on URL
+            const existingUrls = new Set(propertyDetailsImages.map(img => img.url));
+            
+            for (const additionalImg of additionalImages) {
+                if (!existingUrls.has(additionalImg.url)) {
+                    allImages.push(additionalImg);
+                    existingUrls.add(additionalImg.url);
+                }
+            }
 
-            if (result.images && result.images.length > 0) {
-              return {
-                  property_name: result.property_name || targetPropertyForName,
-                  images: result.images,
-                  message: "Here are the images you requested.",
-                  ui_display_hint: 'IMAGE_GALLERY',
-                  images_data: {
-                      propertyName: result.property_name || targetPropertyForName,
-                      images: result.images.map((img: any) => ({ url: img.image_url || img.url, alt: img.description || img.alt, description: img.description }))
-                  }
-              };
+            console.log(`[getPropertyImages] Final merged result: ${allImages.length} total images (${propertyDetailsImages.length} from details + ${allImages.length - propertyDetailsImages.length} additional)`);
+
+            if (allImages.length > 0) {
+                return {
+                    property_name: result.property_name || targetPropertyForName,
+                    images: allImages,
+                    message: "Here are the images you requested.",
+                    ui_display_hint: 'IMAGE_GALLERY',
+                    images_data: {
+                        propertyName: result.property_name || targetPropertyForName,
+                        images: allImages
+                    }
+                };
             } else {
-              return {
-                property_name: result.property_name || targetPropertyForName,
-                images: [],
-                message: result.message || `I couldn't find any images for ${result.property_name || targetPropertyForName}.`,
-                ui_display_hint: 'CHAT'
-              };
+                return {
+                    property_name: result.property_name || targetPropertyForName,
+                    images: [],
+                    message: result.message || `I couldn't find any images for ${result.property_name || targetPropertyForName}.`,
+                    ui_display_hint: 'CHAT'
+                };
             }
 
         } catch (error: any) {
