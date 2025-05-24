@@ -105,7 +105,7 @@ interface BookingDetails {
 export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { // Accept chatbotId prop
   // --- Existing UI State --- 
   const [inputVisible, setInputVisible] = useState(false)
-  const [micMuted, setMicMuted] = useState(true) // Start unmuted (enable VAD immediately)
+  const [micMuted, setMicMuted] = useState(false) // Start unmuted (mic initially open)
   const [inputValue, setInputValue] = useState("")
   const [showProperties, setShowProperties] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -1221,7 +1221,41 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
            // Now send the simulated message to trigger the agent response
            sendSimulatedUserMessage("hi");
        }
-   }, [sessionStatus, selectedAgentName, selectedAgentConfigSet, agentMetadata, chatbotId, sendClientEvent, selectedLanguage, micMuted, setActiveDisplayMode]);
+   }, [sessionStatus, selectedAgentName, selectedAgentConfigSet, agentMetadata, chatbotId, sendClientEvent, selectedLanguage, setActiveDisplayMode]); // Removed micMuted from dependencies
+
+  // Separate function to update session with current mic state (prevents recursion)
+  const updateSessionMicState = useCallback(async () => {
+    if (sessionStatus !== 'CONNECTED' || !selectedAgentConfigSet || !dcRef.current) {
+      return;
+    }
+    
+    const currentAgent = selectedAgentConfigSet.find(a => a.name === selectedAgentName);
+    if (!currentAgent) {
+      console.error(`[Update Mic Session] Agent config not found for: ${selectedAgentName}`);
+      return;
+    }
+
+    // Configure turn detection based on current mic state
+    const turnDetection = !micMuted ? {
+      type: "server_vad",
+      threshold: 0.8,
+      prefix_padding_ms: 250,
+      silence_duration_ms: 400,
+      create_response: true,
+    } : null;
+
+    console.log(`[Update Mic Session] Updating turn detection: ${turnDetection ? 'enabled' : 'disabled'}`);
+
+    // Send only the turn detection update
+    const sessionUpdatePayload = {
+      type: "session.update",
+      session: {
+        turn_detection: turnDetection,
+      },
+    };
+
+    sendClientEvent(sessionUpdatePayload, `(mic state update: ${micMuted ? 'muted' : 'unmuted'})`);
+  }, [sessionStatus, selectedAgentConfigSet, selectedAgentName, dcRef, micMuted, sendClientEvent]);
 
   // Add the sendSimulatedUserMessage function to match old code
   const sendSimulatedUserMessage = useCallback((text: string) => {
@@ -1264,30 +1298,31 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
   // Improved toggleMic function that properly controls the microphone
   const toggleMic = useCallback(() => {
     const turningOn = micMuted; // If currently muted, we are turning it on
-    setMicMuted(!micMuted);
     
     if (sessionStatus !== 'CONNECTED' || !dcRef.current) {
         console.log("[Audio] Cannot toggle microphone, not connected");
         return;
     }
     
-    if (turningOn) {
-        console.log("[Audio] Enabling microphone (updating session with VAD)");
-        // First update session with VAD enabled
-        updateSession(false);
-        
-        // If this is the first time enabling, perform additional setup
-        if (audioContext) {
-          // Commit any existing audio buffer to ensure clean start
-          setTimeout(() => {
-            sendClientEvent({ type: "input_audio_buffer.clear" }, "clear buffer on mic enable");
-          }, 200);
-        }
-    } else {
-        console.log("[Audio] Disabling microphone (updating session without VAD)");
-        updateSession(false); // updateSession now handles VAD based on micMuted state
+    console.log(`[Audio] ${turningOn ? 'Enabling' : 'Disabling'} microphone`);
+    setMicMuted(!micMuted);
+    
+    // Clear audio buffer when toggling
+    if (turningOn && audioContext) {
+      // If this is the first time enabling, perform additional setup
+      setTimeout(() => {
+        sendClientEvent({ type: "input_audio_buffer.clear" }, "clear buffer on mic enable");
+      }, 200);
     }
-  }, [micMuted, sessionStatus, updateSession, sendClientEvent, dcRef, audioContext]);
+  }, [micMuted, sessionStatus, dcRef, audioContext, sendClientEvent]);
+
+  // Use useEffect to update session when micMuted changes to avoid closure issues
+  useEffect(() => {
+    if (sessionStatus === 'CONNECTED' && initialSessionSetupDoneRef.current) {
+      console.log(`[Audio] Mic state changed to ${micMuted ? 'muted' : 'unmuted'}, updating session`);
+      updateSessionMicState(); // Use the new function that doesn't cause recursion
+    }
+  }, [micMuted, sessionStatus, updateSessionMicState]);
 
   // Add effect to initialize audio context once connected
   useEffect(() => {
@@ -1480,6 +1515,13 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
                        
                        console.log(`[Effect] Updating session. Agent: ${selectedAgentName}, Auto-triggers: ${agentAutoTriggersFirstAction}, ReturningPostVerification: ${isReturningToRealEstateAfterVerification}, Sending simulated 'hi': ${shouldSendSimulatedHi}`);
                        updateSession(shouldSendSimulatedHi); 
+                       
+                       // Initialize mic state after session is updated (since mic starts unmuted)
+                       setTimeout(() => {
+                         updateSessionMicState();
+                         console.log("[Effect] Mic state initialized for new session");
+                       }, 500); // Small delay to ensure session update completes first
+                       
                        // Mark setup truly complete *after* successful updateSession
                        // initialSessionSetupDoneRef.current = true; // Already set above
                        console.log("[Effect] Initial session setup complete.");
@@ -1508,7 +1550,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
       // - agentMetadata: Trigger *only* when the essential initial metadata (chatbotId/session_id) is first available.
       // - selectedAgentConfigSet: Ensure config is loaded.
       // Dependencies fetchOrgMetadata and updateSession are stable useCallback refs.
-  }, [sessionStatus, selectedAgentName, agentMetadata?.chatbot_id, agentMetadata?.session_id, selectedAgentConfigSet, fetchOrgMetadata, updateSession, addTranscriptMessage]); 
+  }, [sessionStatus, selectedAgentName, agentMetadata?.chatbot_id, agentMetadata?.session_id, selectedAgentConfigSet, fetchOrgMetadata, updateSession, updateSessionMicState, addTranscriptMessage]);
 
   // Separate effect to reset the setup flag when the agent name changes
   const previousAgentNameRef = useRef<string | null>(null);
