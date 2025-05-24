@@ -529,7 +529,7 @@ export function useHandleServerEvent({
                 }, 200);
               } else if (newAgentConfig && newAgentConfig.name === "realEstate" && (fnResult.flow_context === "from_scheduling_verification" || (newAgentPreparedMetadata as any).flow_context === "from_scheduling_verification")) {
                 // Special handling for return to realEstate after scheduling verification
-                console.log("[handleFunctionCall] realEstate agent transfer after scheduling verification - triggering confirmation message");
+                console.log("[handleFunctionCall] realEstate agent transfer after scheduling verification - calling completeScheduling directly");
                 
                 // Clear the flow context from the new agent's metadata to prevent loops
                 if (newAgentConfig.metadata) {
@@ -537,35 +537,44 @@ export function useHandleServerEvent({
                   console.log("[handleFunctionCall] Cleared flow_context from realEstate agent metadata");
                 }
                 
-                // Add a small delay to ensure the transfer is complete
-                setTimeout(() => {
-                    // Send the trigger message directly without checking active response
-                    const simulatedRealEstateMessageId = generateSafeId();
-                    const confirmationTriggerText = "TRIGGER_BOOKING_CONFIRMATION";
-                    console.log(`[handleFunctionCall] Sending trigger message to realEstate agent: '${confirmationTriggerText}'`);
-                    
-                    // First cancel any active response
-                    sendClientEvent({ type: "response.cancel" }, "(cancelling before realEstate confirmation)");
-                    
-                    // Small delay after cancellation
-                    setTimeout(() => {
-                        // Send the trigger message
-                        sendClientEvent({
-                            type: "conversation.item.create",
-                            item: {
-                                id: simulatedRealEstateMessageId,
-                                type: "message",
-                                role: "user",
-                                content: [{ type: "input_text", text: confirmationTriggerText }]
-                            }
-                        }, "(simulated message for realEstate scheduling confirmation)");
+                // DIRECT CALL TO completeScheduling - NO MORE TRIGGER MESSAGES!
+                console.log("🚨🚨🚨 [DIRECT CALL] Calling completeScheduling directly instead of sending trigger message");
+                
+                const completeSchedulingTool = newAgentConfig?.toolLogic?.completeScheduling;
+                if (typeof completeSchedulingTool === 'function') {
+                  console.log("🚨🚨🚨 [DIRECT CALL] Found completeScheduling tool, calling it now...");
+                  
+                  // Call completeScheduling directly with a small delay to ensure transfer is complete
+                  setTimeout(() => {
+                    completeSchedulingTool({}, transcriptItems || []).then((result: any) => {
+                      console.log("🚨🚨🚨 [DIRECT CALL] completeScheduling result:", result);
+                      
+                      if (result && result.message) {
+                        // Add the confirmation message to transcript
+                        const confirmationMessageId = generateSafeId();
+                        addTranscriptMessage(confirmationMessageId, 'assistant', result.message);
                         
-                        // Small delay before creating response
-                        setTimeout(() => {
-                            sendClientEvent({ type: "response.create" }, "(auto-trigger response for realEstate confirmation)");
-                        }, 100);
-                    }, 100);
-                }, 200);
+                        // Update UI display mode if specified
+                        if (result.ui_display_hint) {
+                          console.log(`🚨🚨🚨 [DIRECT CALL] Setting UI display hint: ${result.ui_display_hint}`);
+                          setActiveDisplayMode(result.ui_display_hint as ActiveDisplayMode);
+                          
+                          if (result.ui_display_hint === 'BOOKING_CONFIRMATION' && result.booking_details) {
+                            console.log(`🚨🚨🚨 [DIRECT CALL] Setting booking details:`, result.booking_details);
+                            if (setBookingDetails) {
+                              setBookingDetails(result.booking_details);
+                            }
+                          }
+                        }
+                      }
+                    }).catch((error: any) => {
+                      console.error("🚨🚨🚨 [DIRECT CALL] Error calling completeScheduling:", error);
+                      addTranscriptMessage(generateSafeId(), 'assistant', 'There was an error completing your booking confirmation.');
+                    });
+                  }, 300); // Small delay to ensure transfer is complete
+                } else {
+                  console.error("🚨🚨🚨 [DIRECT CALL] completeScheduling tool not found on realEstate agent!");
+                }
               }
             } else {
               // Only send non-silent transfers (should be rare or never used now)
@@ -1064,9 +1073,52 @@ export function useHandleServerEvent({
         // Tool processing logic (will run for new agent on its first response.done, or normally for non-transfer scenarios)
         // If not transferring, process tool calls for the CURRENT agent.
         console.log(`[Server Event Hook] Processing tools for agent ${currentAgentNameInResponse} (Transfer flag is now ${isTransferringAgentRef.current})`);
+        
+        // 🔍 ADD DETAILED LOGGING FOR FUNCTION CALLS
+        console.log(`🔍 [Server Event Hook] Response output structure:`, serverEvent.response?.output);
+        
         if (serverEvent.response?.output) {
-          serverEvent.response.output.forEach((outputItem) => {
+          console.log(`🔍 [Server Event Hook] Found ${serverEvent.response.output.length} output items to process`);
+          
+          let functionCallCount = 0;
+          serverEvent.response.output.forEach((outputItem, index) => {
+            console.log(`🔍 [Server Event Hook] Output item ${index}:`, {
+              type: outputItem.type,
+              name: (outputItem as any).name,
+              hasArguments: !!(outputItem as any).arguments,
+              content: outputItem.type === 'message' ? (outputItem as any).content : 'N/A'
+            });
+            
+            // SPECIAL LOGGING FOR MESSAGE CONTENT WHEN WE EXPECT FUNCTION CALLS
+            if (outputItem.type === 'message') {
+              const messageContent = (outputItem as any).content;
+              console.log(`🔍 [Server Event Hook] Message content:`, messageContent);
+              
+              // Check if this looks like a response to TRIGGER_BOOKING_CONFIRMATION
+              if (messageContent && Array.isArray(messageContent) && messageContent.length > 0) {
+                const textContent = messageContent[0]?.text || '';
+                console.log(`🔍 [Server Event Hook] Text content: "${textContent}"`);
+                
+                // Check if this contains booking confirmation language
+                if (textContent.toLowerCase().includes('great') || 
+                    textContent.toLowerCase().includes('scheduled') || 
+                    textContent.toLowerCase().includes('visit') ||
+                    textContent.toLowerCase().includes('confirmation')) {
+                  console.log(`🚨🚨🚨 [Server Event Hook] DETECTED BOOKING CONFIRMATION TEXT! Agent should have called completeScheduling instead!`);
+                  console.log(`🚨🚨🚨 [Server Event Hook] Agent text: "${textContent}"`);
+                }
+              }
+            }
+            
             if (outputItem.type === "function_call" && outputItem.name && outputItem.arguments) {
+              functionCallCount++;
+              console.log(`🔍 [Server Event Hook] Processing function call #${functionCallCount}: ${outputItem.name}`);
+              
+              // SPECIAL LOGGING FOR COMPLETETSCHEDULING
+              if (outputItem.name === 'completeScheduling') {
+                console.log(`🚨🚨🚨 [Server Event Hook] FOUND completeScheduling call! This should handle TRIGGER_BOOKING_CONFIRMATION`);
+              }
+              
               // This handleFunctionCall will execute for the selectedAgentName.
               // If a transfer previously occurred and setSelectedAgentName was called, this should be the NEW agent.
               handleFunctionCall({
@@ -1076,6 +1128,15 @@ export function useHandleServerEvent({
               });
             }
           });
+          
+          console.log(`🔍 [Server Event Hook] Total function calls processed: ${functionCallCount}`);
+          
+          if (functionCallCount === 0) {
+            console.log(`🚨🚨🚨 [Server Event Hook] NO FUNCTION CALLS FOUND! Agent ${currentAgentNameInResponse} completed response without calling any tools`);
+            console.log(`🚨🚨🚨 [Server Event Hook] This might indicate the agent is not following instructions for TRIGGER_BOOKING_CONFIRMATION`);
+          }
+        } else {
+          console.log(`🚨🚨🚨 [Server Event Hook] NO OUTPUT FOUND in response! This is unusual.`);
         }
         break;
       }

@@ -57,7 +57,18 @@ export const getInstructions = (metadata: AgentMetadata | undefined | null) => {
   const projectList = safeMetadata.project_names.length > 0 ? safeMetadata.project_names.join(", ") : "(No projects specified)";
 
   // Restore instructions closer to the original logic provided, adding UI hint guidance
-  return `You are a helpful real estate agent representing ${safeMetadata.org_name}.
+  const instructions = `You are a helpful real estate agent representing ${safeMetadata.org_name}.
+
+🚨🚨🚨 CRITICAL SYSTEM TRIGGER INSTRUCTIONS (MUST FOLLOW EXACTLY): 🚨🚨🚨
+
+IF the user message is EXACTLY "TRIGGER_BOOKING_CONFIRMATION" (and nothing else):
+1. DO NOT respond with text
+2. DO NOT call trackUserMessage 
+3. DO NOT call any other tool
+4. IMMEDIATELY and ONLY call the "completeScheduling" tool with no parameters: completeScheduling()
+5. This is a system trigger, not a user message - treat it as a function call command
+
+🚨🚨🚨 END CRITICAL INSTRUCTIONS 🚨🚨🚨
 
 Your company manages the following properties: ${projectList}
 
@@ -92,13 +103,12 @@ SPECIAL TRIGGER MESSAGES:
   3. Then provide your response
 - When you receive a message like {Trigger msg: Explain details of this [property name]}, immediately provide a brief 2-line summary of that property. Focus on its BEST features and price range.
 - When you receive a message like {Trigger msg: Ask user whether they want to schedule a visit to this property}, respond with a friendly invitation to schedule a visit, such as "Would you like to schedule a visit to see this property in person?"
-- **BOOKING CONFIRMATION TRIGGER**: Booking confirmation is handled automatically by the trackUserMessage tool.
 - Always keep trigger message responses super short (1-2 sentences max). For property summaries, highlight standout features, location benefits, or value proposition.
 - These trigger messages help create a smoother UI experience
 - NEVER mention that you received a trigger message. Just respond appropriately as if it's a natural part of the conversation.
 
 TOOL USAGE & UI HINTS:
-        - ALWAYS use 'trackUserMessage' at the start of handling ANY user message.
+        - ALWAYS use 'trackUserMessage' at the start of handling ANY user message EXCEPT for 'TRIGGER_BOOKING_CONFIRMATION' messages.
         - ALWAYS use 'detectPropertyInMessage' *after* 'trackUserMessage'.
 - **CRITICAL**: Use 'updateActiveProject' IMMEDIATELY when 'detectPropertyInMessage' returns 'shouldUpdateActiveProject: true'. This is essential for trigger messages from property card selections to work correctly.
 - **General Property List Request:** When the user asks for a general list (e.g., "show me your properties"), use 'getProjectDetails' without filters. It returns ui_display_hint: 'PROPERTY_LIST'. Your text MUST be brief: "Here are our projects that you can choose from. You can click on the cards below for more details. You can click on the cards below for more details."
@@ -106,7 +116,6 @@ TOOL USAGE & UI HINTS:
 - **Lookup Property (Vector Search):** Use 'lookupProperty' for vague or feature-based searches (e.g., "find properties near the park"). It returns ui_display_hint: 'CHAT'. Summarize the findings from the tool's 'search_results' in your text response.
 - **Image Request:** Use 'getPropertyImages'. It returns ui_display_hint: 'IMAGE_GALLERY'. Your text MUST be brief: "Here are the images."
 - **Scheduling:** Use 'initiateScheduling' ONLY when the user confirms. Do NOT pass property_id parameter - let it use the active project automatically.
-        - **Booking Confirmation:** Booking confirmation is handled automatically by trackUserMessage.
 - **Other Tools ('calculateRoute', 'findNearestPlace'):** These likely return ui_display_hint: 'CHAT'. Present their results textually.
 
 CRITICAL FLOW RULES: 
@@ -127,8 +136,6 @@ CRITICAL FLOW RULES:
 - ONLY ask about scheduling a visit if is_verified is true AND has_scheduled is false AND 'trackUserMessage' indicates it.
 - After calling 'initiateScheduling', YOU MUST NOT generate any text response.
 - **IMPORTANT AGENT TRANSFER RULE:** If ANY tool you call (e.g., 'trackUserMessage', 'initiateScheduling') returns a 'destination_agent' field in its result (signaling an agent transfer), YOU MUST NOT generate any text response yourself. Your turn ends silently, and the system will activate the destination agent.
-- Booking confirmation is handled automatically by trackUserMessage.
-- The 'completeScheduling' tool will return both the confirmation message for you to say AND the 'BOOKING_CONFIRMATION' UI hint to display the booking card.
 
 SCHEDULING INTENT DETECTION:
 - You must carefully analyze user messages for scheduling intent. Examples include:
@@ -143,6 +150,22 @@ SCHEDULING INTENT DETECTION:
 - **CRITICAL:** Do NOT pass property_id when calling 'initiateScheduling' - omit it completely so the function uses the active project context automatically.
 - Booking confirmation is handled automatically by trackUserMessage.
 `;
+
+  // 🔍 ADD LOGGING TO SEE WHAT INSTRUCTIONS ARE BEING SENT
+  console.log("🔍 [getInstructions] Generated instructions for realEstate agent");
+  console.log("🔍 [getInstructions] Key instruction lines:");
+  console.log("  - BOOKING CONFIRMATION TRIGGER: When you receive 'TRIGGER_BOOKING_CONFIRMATION' message, IMMEDIATELY call 'completeScheduling' tool");
+  console.log("  - For 'TRIGGER_BOOKING_CONFIRMATION' messages, call 'completeScheduling' directly - do NOT call trackUserMessage");
+  console.log("🔍 [getInstructions] Current metadata state:", {
+    is_verified: safeMetadata.is_verified,
+    has_scheduled: safeMetadata.has_scheduled,
+    customer_name: safeMetadata.customer_name,
+    selectedDate: (safeMetadata as any).selectedDate,
+    selectedTime: (safeMetadata as any).selectedTime,
+    property_name: (safeMetadata as any).property_name
+  });
+
+  return instructions;
 };
 
 // Agent Definition
@@ -343,7 +366,7 @@ const realEstateAgent: AgentConfig = {
     {
       type: "function",
       name: "completeScheduling",
-      description: "Internal tool: Completes the scheduling process and shows booking confirmation. Use when you receive 'Show the booking confirmation page' OR 'TRIGGER_BOOKING_CONFIRMATION' message.",
+      description: "🚨 CRITICAL: Call this tool IMMEDIATELY when you receive EXACTLY 'TRIGGER_BOOKING_CONFIRMATION' message. This completes the scheduling process and shows booking confirmation. Do NOT call any other tools first.",
       parameters: {
         type: "object",
         properties: {},
@@ -357,179 +380,41 @@ const realEstateAgent: AgentConfig = {
   toolLogic: {
     // --- Internal Tools --- 
     trackUserMessage: async ({ message }: { message: string }) => {
+        console.log("🔍 [trackUserMessage] ENTRY - Received message:", message);
+        
         const metadata = realEstateAgent.metadata as AgentMetadata;
         
-        // Check for special booking confirmation trigger - DO BOOKING CONFIRMATION DIRECTLY
-        if (message === "Show the booking confirmation page" || message === "TRIGGER_BOOKING_CONFIRMATION") {
-            console.log("🚨🚨🚨 [trackUserMessage] BOOKING CONFIRMATION TRIGGER DETECTED - Executing booking confirmation directly");
-            
-            // Get date and time - check both field name variations
-            const dateToUse = metadata?.selectedDate || (metadata as any)?.appointment_date;
-            const timeToUse = metadata?.selectedTime || (metadata as any)?.appointment_time;
-            
-            console.log("[trackUserMessage] Available scheduling data:", {
-                selectedDate: metadata?.selectedDate,
-                selectedTime: metadata?.selectedTime,
-                appointment_date: (metadata as any)?.appointment_date,
-                appointment_time: (metadata as any)?.appointment_time,
-                customer_name: metadata?.customer_name,
-                property_name: (metadata as any)?.property_name
-            });
-            
-            // Check if we have scheduling data
-            if ((dateToUse || timeToUse) && metadata?.customer_name) {
-                // Make sure we have a property name (use defaults if not available)
-                const propertyName = (metadata as any)?.property_name || metadata?.active_project || "the property";
-                
-                console.log("[trackUserMessage] Processing booking confirmation with data:", {
-                    customer_name: metadata.customer_name,
-                    property_name: propertyName,
-                    selectedDate: dateToUse,
-                    selectedTime: timeToUse,
-                    phone_number: metadata.phone_number
-                });
-                
-                // Mark as scheduled in agent metadata
-                if (realEstateAgent.metadata) {
-                    realEstateAgent.metadata.has_scheduled = true;
-                    realEstateAgent.metadata.is_verified = true;
-                    
-                    // Clear flow context to prevent re-processing
-                    delete (realEstateAgent.metadata as any).flow_context;
-                    // Store actual date and time in standard fields for consistency
-                    if (dateToUse && !metadata.selectedDate) {
-                        (realEstateAgent.metadata as any).selectedDate = dateToUse;
-                    }
-                    if (timeToUse && !metadata.selectedTime) {
-                        (realEstateAgent.metadata as any).selectedTime = timeToUse;
-                    }
-                }
-                
-                // Make API calls to notify about the scheduled visit
-                try {
-                    // Prepare data for whatsapp-notifier API
-                    const notifierData = {
-                        org_id: metadata.org_id || "",
-                        builder_name: metadata.org_name || "Property Developer",
-                        lead_name: metadata.customer_name || "",
-                        phone: metadata.phone_number?.replace("+", "") || ""
-                    };
-                    
-                    console.log("[trackUserMessage] Sending whatsapp notification with data:", notifierData);
-                    
-                    // First API call - whatsapp-notifier
-                    fetch("https://dsakezvdiwmoobugchgu.functions.supabase.co/whatsapp-notifier", {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRzYWtlenZkaXdtb29idWdjaGd1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyNTI5Mjc4NiwiZXhwIjoyMDQwODY4Nzg2fQ.CYPKYDqOuOtU7V9QhZ-U21C1fvuGZ-swUEm8beWc_X0'
-                        },
-                        body: JSON.stringify(notifierData)
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        console.log("[trackUserMessage] Whatsapp notifier API response:", data);
-                    })
-                    .catch(error => {
-                        console.error("[trackUserMessage] Whatsapp notifier API error:", error);
-                    });
-                    
-                    // Prepare data for schedule-visit-whatsapp API
-                    const scheduleData = {
-                        customerName: metadata.customer_name || "",
-                        phoneNumber: metadata.phone_number?.startsWith("+") ? metadata.phone_number.substring(1) : metadata.phone_number || "",
-                        propertyId: (metadata as any)?.property_id_to_schedule || "",
-                        visitDateTime: `${dateToUse}, ${timeToUse}`,
-                        chatbotId: metadata.chatbot_id || ""
-                    };
-                    
-                    console.log("[trackUserMessage] Sending schedule visit notification with data:", scheduleData);
-                    
-                    // Second API call - schedule-visit-whatsapp
-                    fetch("https://dsakezvdiwmoobugchgu.supabase.co/functions/v1/schedule-visit-whatsapp", {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRzYWtlenZkaXdtb29idWdjaGd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjUyOTI3ODYsImV4cCI6MjA0MDg2ODc4Nn0.11GJjOlgPf4RocdFjMnWGJpBqFVk1wmbW27OmV0YAzs'
-                        },
-                        body: JSON.stringify(scheduleData)
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        console.log("[trackUserMessage] Schedule visit API response:", data);
-                    })
-                    .catch(error => {
-                        console.error("[trackUserMessage] Schedule visit API error:", error);
-                    });
-                } catch (error) {
-                    console.error("[trackUserMessage] Error making API calls:", error);
-                }
-                
-                // Create confirmation message for the agent to say
-                const confirmationMessage = `Great news, ${metadata.customer_name}! Your visit to ${propertyName} has been scheduled for ${dateToUse} at ${timeToUse}. You'll receive all details shortly!`;
-                
-                // Return success with confirmation message and booking UI
-                return {
-                    success: true,
-                    message: confirmationMessage, // Agent will say this confirmation message
-                    ui_display_hint: 'BOOKING_CONFIRMATION', // Show the booking card
-                    booking_details: {
-                        customerName: metadata.customer_name,
-                        propertyName: propertyName,
-                        date: dateToUse,
-                        time: timeToUse,
-                        phoneNumber: metadata.phone_number
-                    }
-                };
-            } else {
-                // Handle missing data case - but still try to show booking confirmation UI
-                console.warn("[trackUserMessage] Some scheduling data missing, using fallback approach");
-                
-                // Try to construct fallback booking details
-                const fallbackBookingDetails = {
-                    customerName: metadata?.customer_name || "Valued Customer",
-                    propertyName: (metadata as any)?.property_name || metadata?.active_project || "the property",
-                    date: dateToUse || metadata?.selectedDate || "your selected date",
-                    time: timeToUse || metadata?.selectedTime || "your selected time",
-                    phoneNumber: metadata?.phone_number || ""
-                };
-                
-                console.log("[trackUserMessage] Using fallback booking confirmation with:", fallbackBookingDetails);
-                
-                // Create fallback confirmation message
-                const fallbackMessage = `Great news, ${fallbackBookingDetails.customerName}! Your visit to ${fallbackBookingDetails.propertyName} has been scheduled for ${fallbackBookingDetails.date} at ${fallbackBookingDetails.time}. You'll receive all details shortly!`;
-                
-                // Still try to show the booking confirmation UI even with partial data
-                return {
-                    success: true,
-                    message: fallbackMessage, // Agent will say this confirmation message
-                    ui_display_hint: 'BOOKING_CONFIRMATION', // Show booking confirmation UI anyway
-                    booking_details: fallbackBookingDetails
-                };
-            }
-        }
-
         // Check for special trigger messages 
         if (message.startsWith('{Trigger msg:')) {
-            console.log("[trackUserMessage] Detected special trigger message:", message);
+            console.log("🔍 [trackUserMessage] Detected special trigger message:", message);
             return { 
                 success: true, 
                 is_trigger_message: true, // Let LLM know it's a trigger
             };
         }
         
+        // CRITICAL CHECK: Log if we receive TRIGGER_BOOKING_CONFIRMATION
+        if (message === 'TRIGGER_BOOKING_CONFIRMATION') {
+            console.log("🚨🚨🚨 [trackUserMessage] RECEIVED TRIGGER_BOOKING_CONFIRMATION - This should NOT be processed by trackUserMessage!");
+            console.log("🚨🚨🚨 [trackUserMessage] According to instructions, agent should call completeScheduling directly!");
+            console.log("🚨🚨🚨 [trackUserMessage] Current metadata state:", {
+                selectedDate: (metadata as any)?.selectedDate,
+                selectedTime: (metadata as any)?.selectedTime,
+                customer_name: metadata?.customer_name,
+                property_name: (metadata as any)?.property_name,
+                flow_context: (metadata as any)?.flow_context
+            });
+            
+            // Return early - this message should NOT be processed by trackUserMessage
+            return {
+                success: false,
+                error: "TRIGGER_BOOKING_CONFIRMATION should be handled by completeScheduling tool, not trackUserMessage",
+                message: "Agent should call completeScheduling for this trigger"
+            };
+        }
+        
         // PRIORITY 1: Handle specific flow contexts first
-        if (metadata?.flow_context === 'from_scheduling_verification' && (message === "Show the booking confirmation page" || message === "TRIGGER_BOOKING_CONFIRMATION")) {
-            console.log("[trackUserMessage] 'from_scheduling_verification' context, message is booking confirmation trigger. trackUserMessage will now complete its standard processing, allowing the LLM to subsequently call completeScheduling.");
-            if (realEstateAgent.metadata) {
-                // Clear the flow_context here so this specific block isn't re-entered
-                // and to signify this part of the flow has been acknowledged.
-                (realEstateAgent.metadata as AgentMetadata).flow_context = undefined; 
-            }
-            // No early return. Let trackUserMessage continue with its normal logic (counting, etc.).
-            // The LLM will then use its instructions for the booking confirmation trigger
-            // to call completeScheduling.
-        } else if (metadata?.flow_context === 'from_full_scheduling') { 
+        if (metadata?.flow_context === 'from_full_scheduling') {
             console.log("[trackUserMessage] Handling 'from_full_scheduling' context. Directly returning function_call for completeScheduling.");
             if (realEstateAgent.metadata) {
                 (realEstateAgent.metadata as AgentMetadata).flow_context = undefined; 
@@ -587,6 +472,12 @@ const realEstateAgent: AgentConfig = {
             };
         }
         // END OF PRIORITY FLOW CONTEXT HANDLING
+
+        console.log("🔍 [trackUserMessage] Processing regular message:", message);
+        console.log("🔍 [trackUserMessage] Current metadata verification status:", {
+            is_verified: metadata?.is_verified,
+            has_scheduled: metadata?.has_scheduled
+        });
 
         const is_verified = metadata?.is_verified ?? false;
         const has_scheduled = metadata?.has_scheduled ?? false;
@@ -669,7 +560,7 @@ const realEstateAgent: AgentConfig = {
         }
 
         questionCount++;
-        console.log(`[trackUserMessage] Q#: ${questionCount}, Verified: ${is_verified}, Scheduled: ${has_scheduled}, Msg: "${message}"`);
+        console.log(`🔍 [trackUserMessage] Q#: ${questionCount}, Verified: ${is_verified}, Scheduled: ${has_scheduled}, Msg: "${message}"`);
 
         if (!is_verified && questionCount >= 7) {
           console.log("[trackUserMessage] User not verified after 7 questions, transferring to authentication");
@@ -686,6 +577,7 @@ const realEstateAgent: AgentConfig = {
            };
         }
 
+        console.log("🔍 [trackUserMessage] Returning success for regular message processing");
         return { success: true, questionCount, message_processed_by_trackUserMessage: true }; 
     },
 
