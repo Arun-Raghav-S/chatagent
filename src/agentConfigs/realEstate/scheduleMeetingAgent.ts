@@ -7,7 +7,7 @@ const scheduleVisitFuncUrl = process.env.NEXT_PUBLIC_SCHEDULE_VISIT_FUNC_URL || 
 const scheduleVisitFuncKey = process.env.NEXT_PUBLIC_SCHEDULE_VISIT_FUNC_KEY; // Needs to be set!
 
 // Function to generate instructions based on metadata
-const getScheduleMeetingInstructions = (metadata: AgentMetadata | undefined | null): string => {
+export const getScheduleMeetingInstructions = (metadata: AgentMetadata | undefined | null): string => {
   console.log("[scheduleMeetingAgent] getScheduleMeetingInstructions called with metadata:", metadata);
   const language = metadata?.language || "English";
   const isVerified = metadata?.is_verified ?? false;
@@ -26,9 +26,31 @@ Your only job is to book a site-visit.
 
 STRICTLY FOLLOW THIS EXACT FLOW:
 1. CALL TOOL: Immediately call getAvailableSlots. Output ONLY the tool call.
-2. GREET & ASK DATE: After getAvailableSlots returns, THEN greet the user ("Hello! "Please select a date for your visit from the calendar below." The UI will display the calendar.
+2. GREET & ASK DATE: After getAvailableSlots returns, THEN greet the user with a message in ${language}:
+   - English: "Hello! Please select a date for your visit from the calendar below."
+   - Hindi: "नमस्ते! कृपया नीचे कैलेंडर से अपनी यात्रा के लिए एक तारीख चुनें।"
+   - Tamil: "வணக்கம்! கீழே உள்ள நாட்காட்டியில் இருந்து உங்கள் வருகைக்கான தேதியைத் தேர்ந்தெடுக்கவும்।"
+   - Spanish: "¡Hola! Seleccione una fecha para su visita del calendario a continuación."
+   - French: "Bonjour! Veuillez sélectionner une date pour votre visite dans le calendrier ci-dessous."
+   - German: "Hallo! Wählen Sie bitte ein Datum für Ihren Besuch aus dem Kalender unten."
+   - Chinese: "你好！请从下面的日历中选择您访问的日期。"
+   - Japanese: "こんにちは！下のカレンダーから訪問日を選択してください。"
+   - Arabic: "مرحبا! يرجى اختيار تاريخ لزيارتك من التقويم أدناه."
+   - Russian: "Привет! Выберите дату вашего визита в календаре ниже."
+   The UI will display the calendar.
 3. WAIT FOR DATE: User selects a date from the UI. You'll receive a message like "Selected Monday, June 3."
-4. ASK TIME: When you receive a date-only message (e.g., "Selected Monday, June 3."), IMMEDIATELY respond with: "Great! Now please select a preferred time for your visit." The UI will show time buttons.
+4. ASK TIME: When you receive a date-only message (e.g., "Selected Monday, June 3."), IMMEDIATELY respond with a time selection message in ${language}:
+   - English: "Great! Now please select a preferred time for your visit."
+   - Hindi: "बहुत बढ़िया! अब कृपया अपनी यात्रा के लिए एक पसंदीदा समय चुनें।"
+   - Tamil: "சிறப்பு! இப்போது உங்கள் வருகைக்கு விரும்பிய நேரத்தை தேர்ந்தெடுக்கவும்।"
+   - Spanish: "¡Excelente! Ahora seleccione una hora preferida para su visita."
+   - French: "Parfait! Maintenant, sélectionnez une heure préférée pour votre visite."
+   - German: "Großartig! Wählen Sie jetzt eine bevorzugte Zeit für Ihren Besuch."
+   - Chinese: "太好了！现在请选择您访问的首选时间。"
+   - Japanese: "素晴らしい！今度は訪問の希望時間を選択してください。"
+   - Arabic: "رائع! الآن يرجى اختيار الوقت المفضل لزيارتك."
+   - Russian: "Отлично! Теперь выберите предпочтительное время для вашего визита."
+   The UI will show time buttons.
 5. WAIT FOR TIME: User selects a time. You'll receive a message like "Selected Monday, June 3 at 4:00 PM."
 6. CHECK VERIFICATION (using status from getAvailableSlots result):
    - If user_verification_status was "verified":
@@ -176,7 +198,25 @@ const scheduleMeetingAgent: AgentConfig = {
       const isVerified = metadata?.is_verified === true;
       const userVerificationStatus = isVerified ? "verified" : "unverified";
 
-      const agentMessage = `Hello! I'm here to help you schedule a visit to ${propertyName}. Please select a date for your visit from the calendar below.`;
+      // Create greeting message based on language
+      let agentMessage = `Hello! I'm here to help you schedule a visit to ${propertyName}. Please select a date for your visit from the calendar below.`; // Default English
+      
+      if (metadata?.language) {
+        const greetings: Record<string, string> = {
+          "English": `Hello! I'm here to help you schedule a visit to ${propertyName}. Please select a date for your visit from the calendar below.`,
+          "Hindi": `नमस्ते! मैं ${propertyName} के लिए आपकी यात्रा को शेड्यूल करने में मदद करने के लिए यहाँ हूँ। कृपया नीचे कैलेंडर से अपनी यात्रा के लिए एक तारीख चुनें।`,
+          "Tamil": `வணக்கம்! ${propertyName}க்கான உங்கள் வருகையைத் திட்டமிட நான் இங்கே உள்ளேன். கீழே உள்ள நாட்காட்டியில் இருந்து உங்கள் வருகைக்கான தேதியைத் தேர்ந்தெடுக்கவும்।`,
+          "Spanish": `¡Hola! Estoy aquí para ayudarte a programar una visita a ${propertyName}. Selecciona una fecha para tu visita del calendario a continuación.`,
+          "French": `Bonjour! Je suis ici pour vous aider à programmer une visite à ${propertyName}. Veuillez sélectionner une date pour votre visite dans le calendrier ci-dessous.`,
+          "German": `Hallo! Ich bin hier, um Ihnen bei der Terminvereinbarung für einen Besuch in ${propertyName} zu helfen. Wählen Sie bitte ein Datum für Ihren Besuch aus dem Kalender unten.`,
+          "Chinese": `你好！我在这里帮助您安排对${propertyName}的访问。请从下面的日历中选择您访问的日期。`,
+          "Japanese": `こんにちは！${propertyName}への訪問をスケジュールするお手伝いをします。下のカレンダーから訪問日を選択してください。`,
+          "Arabic": `مرحبا! أنا هنا لمساعدتك في جدولة زيارة إلى ${propertyName}. يرجى اختيار تاريخ لزيارتك من التقويم أدناه.`,
+          "Russian": `Привет! Я здесь, чтобы помочь вам запланировать визит в ${propertyName}. Выберите дату вашего визита в календаре ниже.`
+        };
+        
+        agentMessage = greetings[metadata.language] || greetings["English"];
+      }
 
       console.log(`[getAvailableSlots] Returning result with property_name: "${propertyName}"`);
       

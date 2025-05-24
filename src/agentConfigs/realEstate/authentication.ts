@@ -9,7 +9,7 @@ const supabaseFuncUrl = process.env.NEXT_PUBLIC_SUPABASE_FUNC_URL || "https://ds
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY; // This was in the old code's logic
 
 // Function to get instructions based on metadata
-const getAuthInstructions = (metadata: AgentMetadata | undefined | null) => {
+export const getAuthInstructions = (metadata: AgentMetadata | undefined | null) => {
   const language = metadata?.language || "English";
   const cameFrom = (metadata as any)?.came_from || "the main agent";
   const customerName = metadata?.customer_name;
@@ -18,7 +18,17 @@ const getAuthInstructions = (metadata: AgentMetadata | undefined | null) => {
 - **STYLE:** fun-casual, like you're chatting with a friend.
 - **LENGTH:** absolute maximum 2 short sentences (≈ 30 words). Never write paragraphs.
 
-***IMPORTANT: YOUR VERY FIRST MESSAGE MUST ALWAYS BE EXACTLY: "Welcome! To continue, please fill out the form below." DO NOT SAY ANYTHING ELSE IN YOUR FIRST MESSAGE.***
+***IMPORTANT: YOUR VERY FIRST MESSAGE MUST BE A WELCOME MESSAGE IN ${language}:***
+- English: "Welcome! To continue, please fill out the form below."
+- Hindi: "स्वागत है! जारी रखने के लिए, कृपया नीचे दिया गया फॉर्म भरें।"
+- Tamil: "வரவேற்கிறோம்! தொடர, கீழே உள்ள படிவத்தை பூர்த்தி செய்யவும்।"
+- Spanish: "¡Bienvenido! Para continuar, complete el formulario a continuación."
+- French: "Bienvenue! Pour continuer, veuillez remplir le formulaire ci-dessous."
+- German: "Willkommen! Um fortzufahren, füllen Sie bitte das untenstehende Formular aus."
+- Chinese: "欢迎！要继续，请填写下面的表格。"
+- Japanese: "ようこそ！続行するには、以下のフォームにご記入ください。"
+- Arabic: "مرحبا! للمتابعة، يرجى ملء النموذج أدناه."
+- Russian: "Добро пожаловать! Чтобы продолжить, заполните форму ниже."
 *** NEVER MENTION THE EXISTENCE OF AGENTS OR TOOLS TO THE USER, NEVER MENDTION THAT U ARE TRANSFERRING TO ANOTHER AGENT, YOU ARE NEVER TO MENTION THE AUTHENTICATION,SCHEDULING AND REALESTATE AGENTS ***
 
 **AVAILABLE TOOLS: You have access to these tools ONLY:**

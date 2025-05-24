@@ -582,7 +582,8 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
         typeof serverEvent.item.content[0].text === 'string' &&
         (
             serverEvent.item.content[0].text.startsWith('{Trigger msg:') ||
-            serverEvent.item.content[0].text === "Show the booking confirmation page"
+            serverEvent.item.content[0].text === "Show the booking confirmation page" ||
+            serverEvent.item.content[0].text === "TRIGGER_BOOKING_CONFIRMATION"
         )
     ) {
       
@@ -1083,7 +1084,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
        // Ensure agent metadata state is merged into the agent config before sending
        if (agentMetadata) {
             currentAgent.metadata = { ...(currentAgent.metadata || {}), ...agentMetadata };
-            // Add selected language to metadata
+            // CRITICAL: Add selected language to metadata
             currentAgent.metadata.language = selectedLanguage;
        } else {
             // If agentMetadata is still null, ensure chatbotId is present
@@ -1096,24 +1097,57 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
              console.warn("[Update Session] agentMetadata state was null, initializing from props/new session.")
        }
 
+       // CRITICAL: Update agent metadata state to include language for future transfers
+       setAgentMetadata(prev => ({
+           ...(prev || {}),
+           ...currentAgent.metadata,
+           language: selectedLanguage
+       }));
+
        console.log(`[Update Session] Updating server session for agent: ${selectedAgentName}, language: ${selectedLanguage}`);
 
-       // Prepare instructions, potentially injecting metadata dynamically
+       // Prepare instructions, dynamically updating them with current language
        let instructions = currentAgent.instructions;
-       // Check if getInstructions function exists (copied from realEstateAgent.ts setup)
-       if (currentAgent.name === 'realEstate' && typeof (window as any).getInstructions === 'function') {
-            try {
-                instructions = (window as any).getInstructions(currentAgent.metadata);
-                console.log("[Update Session] Dynamically generated instructions applied for realEstate agent.");
-            } catch (e) {
-                 console.error("[Update Session] Error running getInstructions:", e);
-            }
-       } else {
-            // Basic interpolation for other agents if needed
-             if (agentMetadata?.language) {
-                 instructions = instructions.replace(/\$\{metadata\?.language \|\| "English"\}/g, agentMetadata.language);
+       
+               // Dynamic instruction generation for all agents
+        if (currentAgent.name === 'realEstate') {
+             // For realEstate agent, call its exported getInstructions function
+             try {
+                 const { getInstructions } = await import('@/agentConfigs/realEstate/realEstateAgent');
+                 instructions = getInstructions(currentAgent.metadata);
+                 console.log("[Update Session] Dynamic instructions applied for realEstate agent with language:", selectedLanguage);
+             } catch (e) {
+                 console.error("[Update Session] Error loading realEstate agent for dynamic instructions:", e);
+                 // Fallback: manually update language in instructions
+                 instructions = instructions.replace(/Respond ONLY in \$\{.*?\}\./, `Respond ONLY in ${selectedLanguage}.`);
              }
-       }
+        } else if (currentAgent.name === 'authentication') {
+             // For authentication agent, update instructions with current language
+             try {
+                 const { getAuthInstructions } = await import('@/agentConfigs/realEstate/authentication');
+                 instructions = getAuthInstructions(currentAgent.metadata);
+                 console.log("[Update Session] Dynamic instructions applied for authentication agent with language:", selectedLanguage);
+             } catch (e) {
+                 console.error("[Update Session] Error loading auth agent for dynamic instructions:", e);
+                 // Fallback: manually update language in instructions
+                 instructions = instructions.replace(/Respond ONLY in \$\{.*?\}\./, `Respond ONLY in ${selectedLanguage}.`);
+             }
+        } else if (currentAgent.name === 'scheduleMeeting') {
+             // For scheduling agent, update instructions with current language
+             try {
+                 const { getScheduleMeetingInstructions } = await import('@/agentConfigs/realEstate/scheduleMeetingAgent');
+                 instructions = getScheduleMeetingInstructions(currentAgent.metadata);
+                 console.log("[Update Session] Dynamic instructions applied for scheduling agent with language:", selectedLanguage);
+             } catch (e) {
+                 console.error("[Update Session] Error loading schedule agent for dynamic instructions:", e);
+                 // Fallback: manually update language in instructions
+                 instructions = instructions.replace(/Respond ONLY in \$\{.*?\}\./, `Respond ONLY in ${selectedLanguage}.`);
+             }
+        } else {
+             // Generic fallback for any other agents
+             instructions = instructions.replace(/Respond ONLY in \$\{.*?\}\./, `Respond ONLY in ${selectedLanguage}.`);
+             instructions = instructions.replace(/LANGUAGE: Respond ONLY in \$\{.*?\}\./, `LANGUAGE: Respond ONLY in ${selectedLanguage}.`);
+        }
 
        // Map language names to ISO codes
        const languageMapping: Record<string, string> = {
@@ -1696,6 +1730,18 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
     setSelectedLanguage(e.target.value);
   };
 
+  // Effect to update session when language changes (for live language switching)
+  useEffect(() => {
+    if (sessionStatus === 'CONNECTED' && !showIntro) {
+      console.log(`[Language Change] Language changed to: ${selectedLanguage}, updating session`);
+      // Update the session with new language setting
+      updateSession(false);
+    }
+    // ESLint disable: updateSession is intentionally omitted to prevent infinite loop
+    // since updateSession depends on selectedLanguage
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLanguage, sessionStatus, showIntro]);
+
   const handleProceed = () => {
     setShowIntro(false);
     
@@ -2103,7 +2149,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
     stopCurrentResponse(sendClientEvent);
     
     const triggerMessageId = generateSafeId();
-    const confirmationTriggerText = "Show the booking confirmation page";
+    const confirmationTriggerText = "TRIGGER_BOOKING_CONFIRMATION";
     console.log(`[UI] Sending trigger message to realEstate agent: '${confirmationTriggerText}'`);
     
     // Send the trigger message (not added to visible transcript)

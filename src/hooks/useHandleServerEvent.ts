@@ -332,6 +332,9 @@ export function useHandleServerEvent({
               org_id: currentAgent.metadata?.org_id || newAgentConfig.metadata?.org_id,
               session_id: currentAgent.metadata?.session_id || newAgentConfig.metadata?.session_id || generateSafeId(),
 
+              // CRITICAL: Preserve language setting during transfers
+              language: currentAgent.metadata?.language || newAgentConfig.metadata?.language || "English",
+
               ...(fnResult as any), // Layer: Fields from the transferring tool's result (takes highest precedence for its specific fields)
               
               came_from: cameFromContext, // Explicitly set came_from
@@ -524,7 +527,7 @@ export function useHandleServerEvent({
                     }, 100);
                   }
                 }, 200);
-              } else if (newAgentConfig && newAgentConfig.name === "realEstate" && fnResult.flow_context === "from_scheduling_verification") {
+              } else if (newAgentConfig && newAgentConfig.name === "realEstate" && (fnResult.flow_context === "from_scheduling_verification" || (newAgentPreparedMetadata as any).flow_context === "from_scheduling_verification")) {
                 // Special handling for return to realEstate after scheduling verification
                 console.log("[handleFunctionCall] realEstate agent transfer after scheduling verification - triggering confirmation message");
                 
@@ -538,7 +541,7 @@ export function useHandleServerEvent({
                 setTimeout(() => {
                     // Send the trigger message directly without checking active response
                     const simulatedRealEstateMessageId = generateSafeId();
-                    const confirmationTriggerText = "Show the booking confirmation page";
+                    const confirmationTriggerText = "TRIGGER_BOOKING_CONFIRMATION";
                     console.log(`[handleFunctionCall] Sending trigger message to realEstate agent: '${confirmationTriggerText}'`);
                     
                     // First cancel any active response
@@ -644,7 +647,7 @@ export function useHandleServerEvent({
 
         // Specific handling for completeScheduling
         if (functionCallParams.name === "completeScheduling") {
-          console.log("[handleFunctionCall] completeScheduling called - ensuring proper processing:", fnResult);
+          console.log("🚨🚨🚨 [handleFunctionCall] completeScheduling TOOL CALLED - ensuring proper processing:", fnResult);
           
           // This tool should ALWAYS return a booking confirmation message and UI hint
           if (!fnResult.ui_display_hint) {
@@ -662,6 +665,29 @@ export function useHandleServerEvent({
             },
           });
           sendClientEvent({ type: "response.create" });
+          
+          // After booking confirmation, send a follow-up trigger message
+          setTimeout(() => {
+            const followUpTriggerMessageId = generateSafeId();
+            const followUpTriggerText = "{Trigger msg: Say How else can I help you?}";
+            console.log(`[handleFunctionCall] Sending follow-up trigger after booking confirmation: '${followUpTriggerText}'`);
+            
+            sendClientEvent({
+              type: "conversation.item.create",
+              item: {
+                id: followUpTriggerMessageId,
+                type: "message",
+                role: "user",
+                content: [{ type: "input_text", text: followUpTriggerText }]
+              }
+            }, "(follow-up trigger after booking confirmation)");
+            
+            // Trigger response to the follow-up message
+            setTimeout(() => {
+              sendClientEvent({ type: "response.create" }, "(trigger response for follow-up after booking)");
+            }, 100);
+          }, 3000); // Wait 3 seconds after booking confirmation
+          
           return; // Skip the regular function handling below
         }
 
