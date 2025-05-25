@@ -1341,11 +1341,11 @@ const realEstateAgent: AgentConfig = {
             };
         }
 
-        // Get the destination coordinates from project_locations
+        // Get the property location from project_locations to construct destination string
         const project_locations = metadata?.project_locations || {};
-        const destinationCoords = project_locations[destination_property];
+        const propertyLocationCoords = project_locations[destination_property];
         
-        if (!destinationCoords) {
+        if (!propertyLocationCoords) {
             console.error(`[calculateRoute] No location found for property: ${destination_property}`);
             console.log(`[calculateRoute] Available properties:`, Object.keys(project_locations));
             return {
@@ -1355,10 +1355,62 @@ const realEstateAgent: AgentConfig = {
             };
         }
 
-        console.log(`[calculateRoute] Found destination coordinates: ${destinationCoords} for property: ${destination_property}`);
+        // Construct destination string as "Property Name, Location" 
+        // Try to get additional location information from property details
+        let destinationString = destination_property;
+        
+        try {
+            // Try to get property details to extract city information
+            const metadataAny = metadata as any;
+            let project_id_for_details = null;
+            
+            // Try to get project_id from various sources
+            if (metadataAny?.project_id_map && metadataAny.project_id_map[destination_property]) {
+                project_id_for_details = metadataAny.project_id_map[destination_property];
+            } else if (metadataAny?.active_project_id && destination_property === metadata?.active_project) {
+                project_id_for_details = metadataAny.active_project_id;
+            }
+            
+            // Call getProjectDetails to get property location info
+            const projectDetailsParams = project_id_for_details 
+                ? { project_id: project_id_for_details }
+                : { project_name: destination_property };
+            
+            const projectDetailsResult = await realEstateAgent.toolLogic?.getProjectDetails?.(projectDetailsParams, transcript);
+            
+            if (projectDetailsResult && !projectDetailsResult.error) {
+                let propertyLocation = null;
+                
+                // Extract location from property details
+                if (projectDetailsResult.property_details && projectDetailsResult.property_details.location) {
+                    propertyLocation = projectDetailsResult.property_details.location;
+                } else if (projectDetailsResult.properties && Array.isArray(projectDetailsResult.properties) && projectDetailsResult.properties.length > 0) {
+                    const matchingProperty = projectDetailsResult.properties.find((prop: any) => 
+                        prop.name?.toLowerCase() === destination_property.toLowerCase()
+                    ) || projectDetailsResult.properties[0];
+                    
+                    if (matchingProperty && matchingProperty.location) {
+                        propertyLocation = matchingProperty.location;
+                    }
+                }
+                
+                // Construct destination string with city if available
+                if (propertyLocation && propertyLocation.city) {
+                    destinationString = `${destination_property}, ${propertyLocation.city}`;
+                    console.log(`[calculateRoute] Enhanced destination string with city: "${destinationString}"`);
+                } else {
+                    console.log(`[calculateRoute] No city information found, using property name: "${destinationString}"`);
+                }
+            } else {
+                console.log(`[calculateRoute] Could not get property details, using property name: "${destinationString}"`);
+            }
+        } catch (error) {
+            console.warn(`[calculateRoute] Error getting property details for destination: ${error}`);
+            console.log(`[calculateRoute] Falling back to property name: "${destinationString}"`);
+        }
 
         try {
-            // Call the edge function
+            // Call the edge function with the new request body format
             const response = await fetch(
                 toolsEdgeFunctionUrl,
                 {
@@ -1370,7 +1422,7 @@ const realEstateAgent: AgentConfig = {
                     body: JSON.stringify({
                         action: "calculateRoute",
                         origin: origin,
-                        destination: destinationCoords,
+                        destination: destinationString,
                     }),
                 }
             );
@@ -1452,7 +1504,7 @@ const realEstateAgent: AgentConfig = {
                         action: "findNearestPlace",
                         query: query,
                         location: referenceCoords,
-                        k: 3 // Default to 3 results as shown in the curl example
+                        k: 2 // Default to 2 results as shown in the curl example
                     }),
                 }
             );
