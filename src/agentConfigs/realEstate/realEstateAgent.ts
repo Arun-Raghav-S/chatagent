@@ -836,7 +836,8 @@ const realEstateAgent: AgentConfig = {
             console.log("[fetchOrgMetadata] Critical ID fields in response:", {
                 chatbot_id: metadataResult.chatbot_id,
                 org_id: metadataResult.org_id,
-                session_id: metadataResult.session_id
+                session_id: metadataResult.session_id,
+                project_id_map: metadataResult.project_id_map,
             });
             
             // Ensure org_id is preserved from the API response
@@ -1359,21 +1360,48 @@ const realEstateAgent: AgentConfig = {
             appointment_id: metadata?.appointment_id,
             customer_name: metadata?.customer_name,
             property_name: metadata?.property_name,
-            property_id_to_schedule: metadata?.property_id_to_schedule
+            property_id_to_schedule: metadata?.property_id_to_schedule,
+            // CURRENT ACTIVE PROJECT INFO (should be used as primary source)
+            active_project: metadata?.active_project,
+            active_project_id: metadata?.active_project_id
         });
         
         // Get date and time - check both field name variations
         const dateToUse = metadata?.selectedDate || metadata?.appointment_date;
         const timeToUse = metadata?.selectedTime || metadata?.appointment_time;
         
+        // PRIORITY: Use current active project for property info
+        let propertyIdForApi = metadata?.active_project_id;
+        let propertyNameForConfirmation = metadata?.active_project;
+        
+        // Fallback to property_id_to_schedule and property_name if active project not set
+        if (!propertyIdForApi) {
+            propertyIdForApi = metadata?.property_id_to_schedule;
+            console.log("[realEstateAgent.completeScheduling] No active_project_id, falling back to property_id_to_schedule:", propertyIdForApi);
+        }
+        
+        if (!propertyNameForConfirmation || propertyNameForConfirmation === "N/A") {
+            propertyNameForConfirmation = metadata?.property_name;
+            console.log("[realEstateAgent.completeScheduling] No active_project, falling back to property_name:", propertyNameForConfirmation);
+        }
+        
+        // Final fallback
+        propertyNameForConfirmation = propertyNameForConfirmation || "the property";
+        
+        console.log("[realEstateAgent.completeScheduling] FINAL VALUES FOR CONFIRMATION:", {
+            propertyIdForApi,
+            propertyNameForConfirmation,
+            customer_name: metadata?.customer_name,
+            dateToUse,
+            timeToUse
+        });
+        
         // Check if we have scheduling data
         if ((dateToUse || timeToUse) && metadata?.customer_name) {
-            // Make sure we have a property name (use defaults if not available)
-            const propertyName = metadata.property_name || "the property";
-            
             console.log("[realEstateAgent.completeScheduling] Processing booking confirmation with data:", {
                 customer_name: metadata.customer_name,
-                property_name: propertyName,
+                property_name: propertyNameForConfirmation,
+                property_id: propertyIdForApi,
                 selectedDate: dateToUse,
                 selectedTime: timeToUse,
                 phone_number: metadata.phone_number
@@ -1424,16 +1452,16 @@ const realEstateAgent: AgentConfig = {
                     console.error("[realEstateAgent.completeScheduling] Whatsapp notifier API error:", error);
                 });
                 
-                // Prepare data for schedule-visit-whatsapp API
+                // Prepare data for schedule-visit-whatsapp API - USE CORRECT PROPERTY ID
                 const scheduleData = {
                     customerName: metadata.customer_name || "",
                     phoneNumber: metadata.phone_number?.startsWith("+") ? metadata.phone_number.substring(1) : metadata.phone_number || "",
-                    propertyId: metadata.property_id_to_schedule || "",
+                    propertyId: propertyIdForApi || "", // Use the current active project ID
                     visitDateTime: `${dateToUse}, ${timeToUse}`,
                     chatbotId: metadata.chatbot_id || ""
                 };
                 
-                console.log("[realEstateAgent.completeScheduling] Sending schedule visit notification with data:", scheduleData);
+                console.log("[realEstateAgent.completeScheduling] Sending schedule visit notification with CORRECT property data:", scheduleData);
                 
                 // Second API call - schedule-visit-whatsapp
                 fetch("https://dsakezvdiwmoobugchgu.supabase.co/functions/v1/schedule-visit-whatsapp", {
@@ -1455,8 +1483,8 @@ const realEstateAgent: AgentConfig = {
                 console.error("[realEstateAgent.completeScheduling] Error making API calls:", error);
             }
             
-            // Create confirmation message for the agent to say
-            const confirmationMessage = `Great news, ${metadata.customer_name}! Your visit to ${propertyName} has been scheduled for ${dateToUse} at ${timeToUse}. You'll receive all details shortly!`;
+            // Create confirmation message for the agent to say - USE CORRECT PROPERTY NAME
+            const confirmationMessage = `Great news, ${metadata.customer_name}! Your visit to ${propertyNameForConfirmation} has been scheduled for ${dateToUse} at ${timeToUse}. You'll receive all details shortly!`;
             
             // Return success with confirmation message
             return {
@@ -1465,7 +1493,7 @@ const realEstateAgent: AgentConfig = {
                 ui_display_hint: 'BOOKING_CONFIRMATION', // New UI hint for the booking card
                 booking_details: {
                     customerName: metadata.customer_name,
-                    propertyName: propertyName,
+                    propertyName: propertyNameForConfirmation, // Use correct property name
                     date: dateToUse,
                     time: timeToUse,
                     phoneNumber: metadata.phone_number
@@ -1479,13 +1507,14 @@ const realEstateAgent: AgentConfig = {
                 selectedTime: metadata?.selectedTime,
                 appointment_time: metadata?.appointment_time,
                 customer_name: metadata?.customer_name,
-                property_name: metadata?.property_name
+                property_name: metadata?.property_name,
+                active_project: metadata?.active_project
             });
             
-            // Try to construct fallback booking details
+            // Try to construct fallback booking details - USE ACTIVE PROJECT
             const fallbackBookingDetails = {
                 customerName: metadata?.customer_name || "Valued Customer",
-                propertyName: metadata?.property_name || metadata?.active_project || "the property",
+                propertyName: propertyNameForConfirmation,
                 date: dateToUse || metadata?.selectedDate || "your selected date",
                 time: timeToUse || metadata?.selectedTime || "your selected time",
                 phoneNumber: metadata?.phone_number || ""
