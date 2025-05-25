@@ -1327,23 +1327,182 @@ const realEstateAgent: AgentConfig = {
         }
     },
 
-    calculateRoute: async (args: any) => {
-        // ... fetch route from Google Maps API ...
-        // Assuming result is stored in routeSummary
-        return {
-            routeSummary: "Driving directions: ...", // The actual summary
-            ui_display_hint: 'CHAT', // <<< Display result in chat
-            message: "Here are the driving directions:" // Agent's intro text
-        };
+    calculateRoute: async ({ origin, destination_property }: { origin: string; destination_property: string }, transcript: TranscriptItem[] = []) => {
+        console.log(`[calculateRoute] Calculating route from "${origin}" to property "${destination_property}"`);
+        
+        const metadata = realEstateAgent.metadata as AgentMetadata;
+        
+        if (!supabaseAnonKey) {
+            console.error("[calculateRoute] Missing NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+            return { 
+                error: "Server configuration error.", 
+                ui_display_hint: 'CHAT',
+                message: "Sorry, I couldn't calculate the route due to a server configuration issue."
+            };
+        }
+
+        // Get the destination coordinates from project_locations
+        const project_locations = metadata?.project_locations || {};
+        const destinationCoords = project_locations[destination_property];
+        
+        if (!destinationCoords) {
+            console.error(`[calculateRoute] No location found for property: ${destination_property}`);
+            console.log(`[calculateRoute] Available properties:`, Object.keys(project_locations));
+            return {
+                error: `Location not found for property: ${destination_property}`,
+                ui_display_hint: 'CHAT',
+                message: `Sorry, I don't have the location coordinates for ${destination_property}.`
+            };
+        }
+
+        console.log(`[calculateRoute] Found destination coordinates: ${destinationCoords} for property: ${destination_property}`);
+
+        try {
+            // Call the edge function
+            const response = await fetch(
+                toolsEdgeFunctionUrl,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${supabaseAnonKey}`,
+                    },
+                    body: JSON.stringify({
+                        action: "calculateRoute",
+                        origin: origin,
+                        destination: destinationCoords,
+                    }),
+                }
+            );
+
+            const data = await response.json();
+
+            if (response.ok && data.routeSummary) {
+                console.log(`[calculateRoute] Route summary from edge function: ${data.routeSummary}`);
+                return { 
+                    routeSummary: data.routeSummary,
+                    ui_display_hint: 'CHAT',
+                    message: `Here are the driving directions to ${destination_property}:`
+                };
+            } else if (response.ok && data.error) {
+                console.warn(`[calculateRoute] Edge function returned an error: ${data.error}`);
+                return { 
+                    error: data.error,
+                    ui_display_hint: 'CHAT',
+                    message: `Sorry, I couldn't calculate the route: ${data.error}`
+                };
+            } else {
+                console.error("[calculateRoute] Edge function error:", data.error || response.statusText);
+                return { 
+                    error: data.error || "Error calling calculateRoute edge function.",
+                    ui_display_hint: 'CHAT',
+                    message: "Sorry, there was an error calculating the route."
+                };
+            }
+        } catch (error: any) {
+            console.error("[calculateRoute] Error calling edge function:", error);
+            return { 
+                error: `Exception calculating route: ${error.message}`,
+                ui_display_hint: 'CHAT',
+                message: "Sorry, an unexpected error occurred while calculating the route."
+            };
+        }
     },
-    findNearestPlace: async (args: any) => {
-        // ... fetch nearest place from Google Maps API ...
-        // Assuming result is stored in placeInfo
-        return {
-            placeInfo: "The nearest park is Central Park, 0.5 miles away.", // The actual result
-            ui_display_hint: 'CHAT', // <<< Display result in chat
-            message: "Regarding the nearest place:" // Agent's intro text
-        };
+    findNearestPlace: async ({ query, reference_property }: { query: string; reference_property: string }, transcript: TranscriptItem[] = []) => {
+        console.log(`[findNearestPlace] Finding "${query}" near property "${reference_property}"`);
+        
+        const metadata = realEstateAgent.metadata as AgentMetadata;
+        
+        if (!supabaseAnonKey) {
+            console.error("[findNearestPlace] Missing NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+            return { 
+                error: "Server configuration error.", 
+                ui_display_hint: 'CHAT',
+                message: "Sorry, I couldn't find nearby places due to a server configuration issue."
+            };
+        }
+
+        // Get the reference coordinates from project_locations
+        const project_locations = metadata?.project_locations || {};
+        const referenceCoords = project_locations[reference_property];
+        
+        if (!referenceCoords) {
+            console.error(`[findNearestPlace] No location found for property: ${reference_property}`);
+            console.log(`[findNearestPlace] Available properties:`, Object.keys(project_locations));
+            return {
+                error: `Location not found for property: ${reference_property}`,
+                ui_display_hint: 'CHAT',
+                message: `Sorry, I don't have the location coordinates for ${reference_property}.`
+            };
+        }
+
+        console.log(`[findNearestPlace] Found reference coordinates: ${referenceCoords} for property: ${reference_property}`);
+
+        try {
+            // Call the edge function
+            const response = await fetch(
+                toolsEdgeFunctionUrl,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${supabaseAnonKey}`,
+                    },
+                    body: JSON.stringify({
+                        action: "findNearestPlace",
+                        query: query,
+                        location: referenceCoords,
+                        k: 3 // Default to 3 results as shown in the curl example
+                    }),
+                }
+            );
+
+            const data = await response.json();
+
+            if (response.ok && data.nearestPlaces && Array.isArray(data.nearestPlaces)) {
+                console.log(`[findNearestPlace] Found ${data.nearestPlaces.length} nearest places:`, data.nearestPlaces);
+                
+                // Format the results into a readable string
+                let resultMessage = "";
+                if (data.nearestPlaces.length > 0) {
+                    resultMessage = data.nearestPlaces.map((place: any, index: number) => {
+                        const rating = place.rating ? ` (Rating: ${place.rating}/5)` : "";
+                        return `${index + 1}. **${place.name}**${rating}\n   📍 ${place.address}`;
+                    }).join('\n\n');
+                } else {
+                    resultMessage = "No places found matching your query.";
+                }
+                
+                return { 
+                    nearestPlaces: data.nearestPlaces,
+                    nearestPlace: resultMessage, // Keep this for backward compatibility
+                    ui_display_hint: 'CHAT',
+                    message: `Here's what I found regarding "${query}" near ${reference_property}:`
+                };
+            } else if (response.ok && data.error) {
+                console.warn(`[findNearestPlace] Edge function returned an error: ${data.error}`);
+                return { 
+                    error: data.error,
+                    ui_display_hint: 'CHAT',
+                    message: `Sorry, I couldn't find nearby places: ${data.error}`
+                };
+            } else {
+                console.error("[findNearestPlace] Edge function error:", data.error || response.statusText);
+                console.error("[findNearestPlace] Full response data:", data);
+                return { 
+                    error: data.error || "Error calling findNearestPlace edge function.",
+                    ui_display_hint: 'CHAT',
+                    message: "Sorry, there was an error finding nearby places."
+                };
+            }
+        } catch (error: any) {
+            console.error("[findNearestPlace] Error calling edge function:", error);
+            return { 
+                error: `Exception finding nearest place: ${error.message}`,
+                ui_display_hint: 'CHAT',
+                message: "Sorry, an unexpected error occurred while finding nearby places."
+            };
+        }
     },
     
     completeScheduling: async () => {
