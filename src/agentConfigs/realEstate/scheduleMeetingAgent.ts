@@ -1,10 +1,13 @@
-import { AgentConfig, AgentMetadata } from "@/types/types"; // Adjusted path
-// import supabaseAdmin from "@/app/lib/supabaseClient"; // Supabase client needs setup
-
-// Required Environment Variables: NEXT_PUBLIC_SCHEDULE_VISIT_FUNC_URL, NEXT_PUBLIC_SCHEDULE_VISIT_FUNC_KEY
-
-const scheduleVisitFuncUrl = process.env.NEXT_PUBLIC_SCHEDULE_VISIT_FUNC_URL || "https://dsakezvdiwmoobugchgu.supabase.co/functions/v1/schedule-visit-whatsapp";
-const scheduleVisitFuncKey = process.env.NEXT_PUBLIC_SCHEDULE_VISIT_FUNC_KEY; // Needs to be set!
+import { AgentConfig, AgentMetadata } from "@/types/types";
+import {
+  getAvailableSlots,
+  scheduleVisit,
+  requestAuthentication,
+  completeScheduling,
+  getUserVerificationStatus,
+  trackUserMessage,
+  transferAgents
+} from './scheduleTools';
 
 // Function to generate instructions based on metadata
 export const getScheduleMeetingInstructions = (metadata: AgentMetadata | undefined | null): string => {
@@ -146,270 +149,22 @@ const scheduleMeetingAgent: AgentConfig = {
   ],
   toolLogic: {
     getAvailableSlots: async ({ property_id }: { property_id: string }) => {
-      console.log(`[getAvailableSlots] Fetching slots for property ID: ${property_id || 'UNDEFINED - Using default'}`);
-      
-      // Add debugging for property ID
-      const metadata = scheduleMeetingAgent.metadata;
-      console.log("[getAvailableSlots] DEBUG - metadata info:");
-      console.log("  - property_id from param:", property_id);
-      console.log("  - property_id_to_schedule from metadata:", (metadata as any)?.property_id_to_schedule);
-      console.log("  - property_name from metadata:", (metadata as any)?.property_name);
-      console.log("  - active_project from metadata:", metadata?.active_project);
-      console.log("  - active_project_id from metadata:", (metadata as any)?.active_project_id);
-      console.log("  - project_ids from metadata:", metadata?.project_ids);
-      console.log("  - is_verified:", metadata?.is_verified);
-      
-      // Use property_id_to_schedule from metadata if property_id is missing
-      let effectivePropertyId = property_id;
-      if (!effectivePropertyId && (metadata as any)?.property_id_to_schedule) {
-        effectivePropertyId = (metadata as any).property_id_to_schedule;
-        console.log(`[getAvailableSlots] Using property_id_to_schedule from metadata: ${effectivePropertyId}`);
-      }
-      
-      // Fallback to first project_id if still missing
-      if (!effectivePropertyId && metadata?.project_ids && metadata.project_ids.length > 0) {
-        effectivePropertyId = metadata.project_ids[0];
-        console.log(`[getAvailableSlots] Falling back to first project_id: ${effectivePropertyId}`);
-      }
-      
-      // --- Get property name from metadata if available ---
-      let propertyName = "this property";
-      
-      // Priority order for property name:
-      // 1. property_name from transfer context (most specific)
-      // 2. active_project from real estate agent
-      // 3. fallback to generic name
-      if ((metadata as any)?.property_name) {
-        propertyName = (metadata as any).property_name;
-        console.log(`[getAvailableSlots] Using property_name from transfer context: ${propertyName}`);
-      } else if (metadata?.active_project && metadata.active_project !== "N/A") {
-        propertyName = metadata.active_project;
-        console.log(`[getAvailableSlots] Using active_project: ${propertyName}`);
-      } else {
-        console.log(`[getAvailableSlots] Using fallback property name: ${propertyName}`);
-      }
-      
-      const slots: Record<string, string[]> = {};
-      const standardTimeSlots = ["11:00 AM", "4:00 PM"];
-      if ((metadata as any)?.selectedDate) {
-        slots[(metadata as any).selectedDate] = standardTimeSlots;
-      }
-      
-      const isVerified = metadata?.is_verified === true;
-      const userVerificationStatus = isVerified ? "verified" : "unverified";
-
-      // Create greeting message based on language
-      let agentMessage = `Hello! I'm here to help you schedule a visit to ${propertyName}. Please select a date for your visit from the calendar below.`; // Default English
-      
-      if (metadata?.language) {
-        const greetings: Record<string, string> = {
-          "English": `Hello! I'm here to help you schedule a visit to ${propertyName}. Please select a date for your visit from the calendar below.`,
-          "Hindi": `नमस्ते! मैं ${propertyName} के लिए आपकी यात्रा को शेड्यूल करने में मदद करने के लिए यहाँ हूँ। कृपया नीचे कैलेंडर से अपनी यात्रा के लिए एक तारीख चुनें।`,
-          "Tamil": `வணக்கம்! ${propertyName}க்கான உங்கள் வருகையைத் திட்டமிட நான் இங்கே உள்ளேன். கீழே உள்ள நாட்காட்டியில் இருந்து உங்கள் வருகைக்கான தேதியைத் தேர்ந்தெடுக்கவும்।`,
-          "Spanish": `¡Hola! Estoy aquí para ayudarte a programar una visita a ${propertyName}. Selecciona una fecha para tu visita del calendario a continuación.`,
-          "French": `Bonjour! Je suis ici pour vous aider à programmer une visite à ${propertyName}. Veuillez sélectionner une date pour votre visite dans le calendrier ci-dessous.`,
-          "German": `Hallo! Ich bin hier, um Ihnen bei der Terminvereinbarung für einen Besuch in ${propertyName} zu helfen. Wählen Sie bitte ein Datum für Ihren Besuch aus dem Kalender unten.`,
-          "Chinese": `你好！我在这里帮助您安排对${propertyName}的访问。请从下面的日历中选择您访问的日期。`,
-          "Japanese": `こんにちは！${propertyName}への訪問をスケジュールするお手伝いをします。下のカレンダーから訪問日を選択してください。`,
-          "Arabic": `مرحبا! أنا هنا لمساعدتك في جدولة زيارة إلى ${propertyName}. يرجى اختيار تاريخ لزيارتك من التقويم أدناه.`,
-          "Russian": `Привет! Я здесь, чтобы помочь вам запланировать визит в ${propertyName}. Выберите дату вашего визита в календаре ниже.`
-        };
-        
-        agentMessage = greetings[metadata.language] || greetings["English"];
-      }
-
-      console.log(`[getAvailableSlots] Returning result with property_name: "${propertyName}"`);
-      
-      return { 
-        slots: slots,
-        timeSlots: standardTimeSlots,
-        property_id: effectivePropertyId,
-        property_name: propertyName,
-        user_verification_status: userVerificationStatus,
-        ui_display_hint: 'SCHEDULING_FORM',
-        message: agentMessage,
-      };
+      return await getAvailableSlots({ property_id }, scheduleMeetingAgent);
     },
     scheduleVisit: async ({ visitDateTime, property_id: propertyIdFromArgs, customer_name: nameFromArgs, phone_number: phoneFromArgs }: { visitDateTime: string; property_id?: string; customer_name?: string; phone_number?: string }) => {
-      console.log(`[scheduleVisit] Attempting to schedule visit for: ${visitDateTime} at property ${propertyIdFromArgs}`);
-
-      const metadata: AgentMetadata | undefined = scheduleMeetingAgent.metadata;
-      let propertyName = (metadata as any)?.property_name || metadata?.active_project || "the property";
-
-      if (!metadata) {
-           console.error("[scheduleVisit] Agent metadata is missing.");
-           return { error: "Missing required agent information for scheduling.", ui_display_hint: 'CHAT', message: "I'm having trouble accessing necessary information to schedule." };
-      }
-
-      let actualVisitDateTime = visitDateTime;
-      if (!actualVisitDateTime && (metadata as any)?.selectedDate && (metadata as any)?.selectedTime) {
-        actualVisitDateTime = `${(metadata as any).selectedDate} at ${(metadata as any).selectedTime}`;
-        console.log(`[scheduleVisit] Using date/time from metadata: ${actualVisitDateTime}`);
-      }
-
-      if (!actualVisitDateTime) {
-        console.error("[scheduleVisit] No visit date/time provided.");
-        return { error: "No date and time selected for the visit.", ui_display_hint: 'SCHEDULING_FORM', message: "Please select a date and time for your visit." };
-      }
-
-      let property_id = propertyIdFromArgs || (metadata as any)?.property_id_to_schedule;
-      if (!property_id && (metadata as any)?.lastReturnedPropertyId) {
-        property_id = (metadata as any).lastReturnedPropertyId;
-        console.log(`[scheduleVisit] Using property ID from previous getAvailableSlots call: ${property_id}`);
-      }
-      if (!property_id && metadata?.project_ids && metadata.project_ids.length > 0) {
-        property_id = metadata.project_ids[0];
-        console.log(`[scheduleVisit] Falling back to first project_id: ${property_id}`);
-      }
-
-      if (!metadata.is_verified) {
-           console.log("[scheduleVisit] User is not verified - automatically transferring to authentication agent");
-           return {
-             destination_agent: "authentication",
-             silentTransfer: true,
-             message: null,
-             ui_display_hint: 'VERIFICATION_FORM',
-             came_from: 'scheduling',
-             property_id_to_schedule: property_id, 
-             property_name: propertyName, 
-             selectedDate: (metadata as any)?.selectedDate, 
-             selectedTime: (metadata as any)?.selectedTime 
-           };
-      }
-
-      const customer_name = nameFromArgs || metadata.customer_name;
-      const phone_number = phoneFromArgs || metadata.phone_number;
-
-      console.log("[scheduleVisit] Using details - Name:", customer_name, "Phone:", phone_number);
-
-      if (!customer_name || !phone_number) {
-        console.error("[scheduleVisit] Missing customer name or phone number AFTER verification flow.");
-        return { error: "Missing required customer details even after verification.", ui_display_hint: 'CHAT', message: "It seems some of your details are missing. Could you please provide them again or contact support?" };
-      }
-
-      if (!property_id) {
-          console.error("[scheduleVisit] Missing property ID (not in args or metadata). Cannot schedule.");
-          return { error: "Cannot schedule visit without knowing the property.", ui_display_hint: 'CHAT', message: "I don't have a specific property to schedule for. Could you clarify which one you're interested in?" };
-      }
-
-      const { chatbot_id, session_id } = metadata;
-      if (!chatbot_id || !session_id) {
-        console.error("[scheduleVisit] Missing critical metadata:", { chatbot_id, session_id });
-        return { error: "Missing required session information.", ui_display_hint: 'CHAT', message: "A session information error is preventing scheduling. Please try again." };
-      }
-
-      if (!scheduleVisitFuncKey) {
-          console.error("[scheduleVisit] Missing NEXT_PUBLIC_SCHEDULE_VISIT_FUNC_KEY environment variable.");
-          return { error: "Server configuration error prevents scheduling.", ui_display_hint: 'CHAT', message: "A server configuration error is preventing scheduling. Please contact support." };
-      }
-
-      try {
-        const response = await fetch(scheduleVisitFuncUrl, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${scheduleVisitFuncKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ customerName: customer_name, phoneNumber: phone_number, propertyId: property_id, visitDateTime: actualVisitDateTime, chatbotId: chatbot_id, sessionId: session_id })
-        });
-        const result = await response.json();
-
-        if (!response.ok) {
-          console.error("[scheduleVisit] Schedule API error:", result?.error || response.statusText);
-          return { error: result?.error || "Failed to schedule the visit via the API.", ui_display_hint: 'SCHEDULING_FORM', message: `I couldn't confirm the booking: ${result?.error || "Please try again."}` };
-        }
-
-        console.log("[scheduleVisit] Schedule visit successful via API:", result);
-
-        if (scheduleMeetingAgent.metadata) {
-            scheduleMeetingAgent.metadata.has_scheduled = true;
-            scheduleMeetingAgent.metadata.customer_name = customer_name; // Ensure customer_name is in metadata
-            scheduleMeetingAgent.metadata.phone_number = phone_number; // Ensure phone_number is in metadata
-            (scheduleMeetingAgent.metadata as any).property_name = propertyName; // Ensure property_name
-            (scheduleMeetingAgent.metadata as any).selectedDate = (metadata as any)?.selectedDate || actualVisitDateTime.split(' at ')[0]; // Ensure date
-            (scheduleMeetingAgent.metadata as any).selectedTime = (metadata as any)?.selectedTime || actualVisitDateTime.split(' at ')[1]; // Ensure time
-             (scheduleMeetingAgent.metadata as any).property_id_to_schedule = property_id; // Ensure property_id
-        }
-
-        return { 
-          booking_confirmed: true,
-          // message: null, // No direct message, realEstateAgent will confirm
-          // ui_display_hint: 'CHAT', // No specific UI hint, will go to completeScheduling next
-          // All necessary data is now in scheduleMeetingAgent.metadata for completeScheduling to pick up
-          // Ensure all required fields for the confirmation message are present in the metadata for completeScheduling
-          customer_name: customer_name,
-          property_name: propertyName,
-          selectedDate: (metadata as any)?.selectedDate || actualVisitDateTime.split(' at ')[0],
-          selectedTime: (metadata as any)?.selectedTime || actualVisitDateTime.split(' at ')[1],
-          property_id: property_id,
-          has_scheduled: true
-        }; // Agent will call completeScheduling next as per instructions
-
-      } catch (error: any) {
-         console.error("[scheduleVisit] Exception calling schedule API:", error);
-         return { error: `Failed to schedule visit due to an exception: ${error.message}`, ui_display_hint: 'SCHEDULING_FORM', message: "An unexpected error occurred while trying to book your visit. Please try again." };
-      }
+      return await scheduleVisit({ visitDateTime, property_id: propertyIdFromArgs, customer_name: nameFromArgs, phone_number: phoneFromArgs }, scheduleMeetingAgent);
     },
     requestAuthentication: async () => {
-      console.log("[scheduleMeeting.requestAuthentication] Transferring to authentication agent.");
-      const metadata = scheduleMeetingAgent.metadata;
-      const propertyName = (metadata as any)?.property_name || metadata?.active_project || "the property";
-      const property_id = (metadata as any)?.property_id_to_schedule || (metadata as any)?.lastReturnedPropertyId;
-      
-      // Using silentTransfer: true and null message to make the transfer seamless
-      return {
-        destination_agent: "authentication",
-        silentTransfer: true,
-        message: null,
-        ui_display_hint: 'VERIFICATION_FORM',
-        came_from: 'scheduling',
-        property_id_to_schedule: property_id, // Preserve the property ID 
-        property_name: propertyName, // Preserve the property name
-        selectedDate: (metadata as any)?.selectedDate, // Preserve the selected date if available
-        selectedTime: (metadata as any)?.selectedTime // Preserve the selected time if available
-      };
+      return await requestAuthentication({}, scheduleMeetingAgent);
     },
     completeScheduling: async () => {
-      console.log("[scheduleMeeting.completeScheduling] Scheduling complete, transferring back to realEstate agent.");
-      const metadata = scheduleMeetingAgent.metadata as any; // Use 'as any' for easier access to custom fields
-      return {
-        destination_agent: "realEstate",
-        silentTransfer: true,
-        message: null, // No message from this agent
-        // Pass all necessary data for realEstateAgent to confirm
-        customer_name: metadata?.customer_name,
-        is_verified: metadata?.is_verified, // Should be true
-        has_scheduled: metadata?.has_scheduled, // Should be true
-        property_name: metadata?.property_name,
-        property_id: metadata?.property_id_to_schedule, // Ensure this uses the correct field name
-        selectedDate: metadata?.selectedDate,
-        selectedTime: metadata?.selectedTime,
-        flow_context: 'from_full_scheduling' // Add the flag for realEstateAgent
-      };
+      return await completeScheduling({}, scheduleMeetingAgent);
     },
-    // Mock implementation to prevent errors
     getUserVerificationStatus: async () => {
-      console.log("[scheduleMeeting.getUserVerificationStatus] Checking verification status");
-      const metadata = scheduleMeetingAgent.metadata;
-      const isVerified = metadata?.is_verified === true;
-      
-      return {
-        is_verified: isVerified,
-        user_verification_status: isVerified ? "verified" : "unverified",
-        message: isVerified ? 
-          "The user is already verified." : 
-          "The user is not verified. Please use requestAuthentication to transfer to the authentication agent.",
-        ui_display_hint: 'SCHEDULING_FORM' // Maintain the current UI
-      };
+      return await getUserVerificationStatus({}, scheduleMeetingAgent);
     },
-    // Add mock trackUserMessage to handle stray messages gracefully
     trackUserMessage: async ({ message }: { message: string }) => {
-      console.log(`[scheduleMeeting.trackUserMessage] Received message (ignoring): "${message}". This agent primarily acts on UI selections or specific function calls.`);
-      // This tool should not produce a user-facing message or change UI on its own for this agent.
-      // It's a no-op to prevent errors from misdirected simulated messages.
-      return {
-        success: true,
-        acknowledged_by_scheduler: true,
-        message_processed: false, // Explicitly indicate no standard processing occurred
-        ui_display_hint: 'SCHEDULING_FORM' // Maintain the current UI
-      };
+      return await trackUserMessage({ message }, scheduleMeetingAgent);
     }
   }
 };
@@ -421,16 +176,7 @@ if (!scheduleMeetingAgent.toolLogic) {
 }
 
 scheduleMeetingAgent.toolLogic.transferAgents = async ({ destination_agent }: { destination_agent: string }) => {
-  console.log(`[scheduleMeeting.transferAgents] BLOCKED direct transfer to ${destination_agent}`);
-  console.log("[scheduleMeeting.transferAgents] FORCING getAvailableSlots to be called first instead");
-  
-  // Instead of transferring, return a reminder that getAvailableSlots must be called first
-  return {
-    success: false,
-    error: "getAvailableSlots must be called first before any transfers",
-    message: "Please select a date for your visit from the calendar below.",
-    ui_display_hint: 'SCHEDULING_FORM'
-  };
+  return await transferAgents({ destination_agent }, scheduleMeetingAgent);
 };
 
 // Update getScheduleMeetingInstructions to reflect the new flow and UI hints
