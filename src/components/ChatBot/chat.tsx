@@ -123,7 +123,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
   const [showIntro, setShowIntro] = useState(true)
   const [selectedLanguage, setSelectedLanguage] = useState("English")
   const languageOptions = [
-    "English", "Hindi", "Tamil", "Spanish", "French", 
+    "English", "Hindi", "Tamil", "Telugu", "Malayalam", "Spanish", "French", 
     "German", "Chinese", "Japanese", "Arabic", "Russian"
   ]
 
