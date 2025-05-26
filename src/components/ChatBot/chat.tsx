@@ -590,8 +590,18 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
     ) {
       
       console.log("[handleServerEvent] Filtering out trigger/system message from transcript:", serverEvent.item.content[0].text);
-      // assistantMessageHandledLocally = true; // This was a bug, should not be set here
-      return; // Don't process this event further
+      
+      // Special handling for SPEAK triggers - let them pass through to the agent but don't show in transcript
+      const messageText = serverEvent.item.content[0].text;
+      if (messageText.startsWith('{Trigger msg: Say ')) {
+        console.log("[handleServerEvent] SPEAK trigger detected - allowing agent processing but hiding from transcript");
+        // Don't return here - let the message continue to be processed by the agent
+        // The agent will receive this message and speak it, but it won't appear in the visible transcript
+        // We'll just skip adding it to the transcript by not calling addTranscriptMessage
+      } else {
+        // For other trigger messages, completely filter them out
+        return; // Don't process this event further
+      }
     }
 
     // --- Handle Function Call Output --- 

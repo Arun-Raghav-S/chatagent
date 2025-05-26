@@ -550,9 +550,25 @@ export function useHandleServerEvent({
                       console.log("🚨🚨🚨 [DIRECT CALL] completeScheduling result:", result);
                       
                       if (result && result.message) {
-                        // Add the confirmation message to transcript
-                        const confirmationMessageId = generateSafeId();
-                        addTranscriptMessage(confirmationMessageId, 'assistant', result.message);
+                        // Instead of just adding to transcript, send a SPEAK trigger so the agent says it out loud
+                        const speakTriggerMessageId = generateSafeId();
+                        const speakTriggerText = `{Trigger msg: Say "${result.message}"}`;
+                        console.log(`🚨🚨🚨 [DIRECT CALL] 🎤 Sending SPEAK trigger: '${speakTriggerText}'`);
+                        
+                        sendClientEvent({
+                          type: "conversation.item.create",
+                          item: {
+                            id: speakTriggerMessageId,
+                            type: "message",
+                            role: "user",
+                            content: [{ type: "input_text", text: speakTriggerText }]
+                          }
+                        }, "(SPEAK trigger for booking confirmation)");
+                        
+                        // Trigger response to make the agent speak the message
+                        setTimeout(() => {
+                          sendClientEvent({ type: "response.create" }, "(trigger response for SPEAK booking confirmation)");
+                        }, 100);
                         
                         // Update UI display mode if specified
                         if (result.ui_display_hint) {
@@ -822,6 +838,12 @@ export function useHandleServerEvent({
         if (role === "user" && text === "hi" && serverEvent.item?.content?.[0]?.type === "input_text") {
           simulatedMessageIdRef.current = itemId;
           break;
+        }
+
+        // Filter out SPEAK trigger messages from transcript but allow agent processing
+        if (role === "user" && text.startsWith('{Trigger msg: Say ')) {
+          console.log(`[Transcript] Filtering SPEAK trigger from transcript: "${text}"`);
+          break; // Don't add SPEAK triggers to the visible transcript
         }
 
         if(isTransferringAgentRef.current && role==="assistant") {
