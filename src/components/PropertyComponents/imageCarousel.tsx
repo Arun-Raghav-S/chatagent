@@ -61,6 +61,23 @@ const ImageCarousel: React.FC<ImageCarouselProps> = ({ images = [], initialIndex
 
   return (
     <div className="relative w-full h-full rounded-lg overflow-hidden bg-blue-950 flex flex-col">
+      {/* Header with back and close buttons */}
+      <div className="absolute top-0 left-0 right-0 z-20 flex justify-between items-center p-4 bg-gradient-to-b from-black/50 to-transparent">
+        <button
+          onClick={onClose}
+          className="text-white hover:text-gray-200 flex items-center gap-1"
+        >
+          <ChevronLeft className="h-5 w-5" />
+          <span>Back</span>
+        </button>
+        <button
+          onClick={onClose}
+          className="text-white hover:text-gray-200"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+
       {/* Main image container */}
       <div className="relative flex-1 flex items-center justify-center">
         <img
