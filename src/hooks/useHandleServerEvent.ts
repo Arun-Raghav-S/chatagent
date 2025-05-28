@@ -27,7 +27,8 @@ type ActiveDisplayMode =
   | 'VERIFICATION_FORM'
   | 'OTP_FORM'
   | 'VERIFICATION_SUCCESS'
-  | 'BOOKING_CONFIRMATION';
+  | 'BOOKING_CONFIRMATION'
+  | 'BROCHURE_VIEWER';
 
 
 export interface UseHandleServerEventParams {
@@ -55,6 +56,7 @@ export interface UseHandleServerEventParams {
   setPropertyGalleryData: Dispatch<SetStateAction<any | null>>;
   setLocationMapData: Dispatch<SetStateAction<any | null>>;
   setBookingDetails: Dispatch<SetStateAction<any | null>>;
+  setBrochureData: Dispatch<SetStateAction<any | null>>;
 }
 
 export function useHandleServerEvent({
@@ -77,6 +79,7 @@ export function useHandleServerEvent({
   setPropertyGalleryData,
   setLocationMapData,
   setBookingDetails,
+  setBrochureData,
 }: UseHandleServerEventParams) {
   // Removed context hook calls
   // const { logServerEvent } = useEvent(); // Placeholder call - Logging can be added back if needed
@@ -194,6 +197,7 @@ export function useHandleServerEvent({
           setSelectedPropertyDetails(null);
           setPropertyGalleryData(null);
           setLocationMapData(null);
+          setBrochureData(null);
           // Other view-specific data setters can be called here with null
 
           // Populate data for the target mode
@@ -205,6 +209,8 @@ export function useHandleServerEvent({
             setPropertyGalleryData(fnResult.images_data);
           } else if (fnResult.ui_display_hint === 'LOCATION_MAP' && fnResult.location_data) {
             setLocationMapData(fnResult.location_data);
+          } else if (fnResult.ui_display_hint === 'BROCHURE_VIEWER' && fnResult.brochure_data) {
+            setBrochureData(fnResult.brochure_data);
           } else if (fnResult.ui_display_hint === 'SCHEDULING_FORM') {
             // Logic for scheduling form, e.g., if fnResult.scheduling_data exists
             // This might involve setting state for availableSlots, selectedProperty in chat.tsx

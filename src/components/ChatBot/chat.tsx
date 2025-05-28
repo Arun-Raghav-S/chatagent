@@ -11,6 +11,7 @@ import PropertyDetails from "../PropertyComponents/propertyDetails"
 import { VoiceWaveform } from "./VoiceWaveForm"
 import PropertyImageGallery from "../PropertyComponents/PropertyImageGallery"
 import LocationMap from "../PropertyComponents/LocationMap"
+import BrochureViewer from "../PropertyComponents/brochureViewer"
 
 // --- Appointment UI Components ---
 import TimePick from "../Appointment/timePick";
@@ -87,7 +88,8 @@ type ActiveDisplayMode =
   | 'OTP_FORM' // For OTPInput
   | 'VERIFICATION_SUCCESS' // For showing verification success before returning to CHAT
   | 'BOOKING_CONFIRMATION' // For showing booking details card
-  | 'LOCATION_MAP'; // For showing location map
+  | 'LOCATION_MAP' // For showing location map
+  | 'BROCHURE_VIEWER'; // For showing brochure viewer
 
 interface PropertyGalleryData {
   propertyName: string
@@ -108,6 +110,12 @@ interface LocationMapData {
   propertyName: string
   location: PropertyLocation
   description?: string
+}
+
+// Add new interface for brochure data
+interface BrochureData {
+  propertyName: string
+  brochureUrl: string
 }
 
 // --- Agent Component ---
@@ -154,6 +162,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
   const [lastAgentTextMessage, setLastAgentTextMessage] = useState<string | null>(null);
   const [propertyGalleryData, setPropertyGalleryData] = useState<PropertyGalleryData | null>(null); // For gallery
   const [locationMapData, setLocationMapData] = useState<LocationMapData | null>(null); // For location map
+  const [brochureData, setBrochureData] = useState<BrochureData | null>(null); // For brochure viewer
 
   // Add new state for audio context
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
@@ -310,6 +319,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
       setPropertyGalleryData,
       setLocationMapData, // Add location map setter
       setBookingDetails, // Add this new setter
+      setBrochureData, // Add brochure data setter
   });
 
   // --- NEW PROPERTY HANDLERS --- 
@@ -2250,6 +2260,11 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
     setActiveDisplayMode('CHAT'); // Or a more context-aware previous state
   }
 
+  const handleCloseBrochure = () => {
+    setBrochureData(null);
+    setActiveDisplayMode('CHAT'); // Or a more context-aware previous state
+  }
+
   return (
     <div
       className="relative bg-blue-900 rounded-3xl overflow-hidden text-white flex flex-col"
@@ -2435,6 +2450,17 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
             </button>
           )}
 
+          {/* Back button for BROCHURE_VIEWER */}
+          {activeDisplayMode === 'BROCHURE_VIEWER' && (
+            <button
+              onClick={handleCloseBrochure}
+              className="mb-2 ml-4 self-start bg-blue-700 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg flex items-center shadow"
+            >
+              <ArrowLeft size={16} className="mr-2" />
+              Back
+            </button>
+          )}
+
           {/* --- Main Content Area --- */}
           <div className={`flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-blue-700 scrollbar-track-blue-800 ${activeDisplayMode === 'CHAT' && transcriptItems.length === 0 && !lastAgentTextMessage ? 'flex items-center justify-center' : 'space-y-4'}`}>
             
@@ -2504,6 +2530,16 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
                   location={locationMapData.location}
                   description={locationMapData.description}
                   onClose={handleCloseLocationMap} 
+                />
+              </div>
+            )}
+
+            {activeDisplayMode === 'BROCHURE_VIEWER' && brochureData && (
+              <div className="w-full p-4"> {/* Added padding for better spacing */}
+                <BrochureViewer
+                  propertyName={brochureData.propertyName}
+                  brochureUrl={brochureData.brochureUrl}
+                  onClose={handleCloseBrochure} 
                 />
               </div>
             )}

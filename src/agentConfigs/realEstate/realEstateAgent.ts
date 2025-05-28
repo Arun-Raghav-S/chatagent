@@ -11,7 +11,8 @@ import {
   findNearestPlace,
   initiateScheduling,
   completeScheduling,
-  showPropertyLocation
+  showPropertyLocation,
+  showPropertyBrochure
 } from './tools';
 
 interface AgentMetadata extends BaseAgentMetadata {
@@ -145,6 +146,7 @@ TOOL USAGE & UI HINTS:
 - **Lookup Property (Vector Search):** Use 'lookupProperty' for vague or feature-based searches (e.g., "find properties near the park"). It returns ui_display_hint: 'CHAT'. Summarize the findings from the tool's 'search_results' in your text response.
 - **Image Request:** Use 'getPropertyImages'. It returns ui_display_hint: 'IMAGE_GALLERY'. Your text MUST be brief: "Here are the images."
 - **Location/Map Request:** Use 'showPropertyLocation' when users ask about location, map, or where a property is. It returns ui_display_hint: 'LOCATION_MAP'. Your text MUST be brief: "Here's the location of [property name]. You can view it on the interactive map."
+- **Brochure Request:** Use 'showPropertyBrochure' when users ask to see, share, or download the brochure. Examples: "Can I see the brochure?", "Share the brochure", "Show me the brochure", "I want to download the brochure". It returns ui_display_hint: 'BROCHURE_VIEWER'. Your text MUST be brief: "You can check the brochure here."
 - **Scheduling:** Use 'initiateScheduling' ONLY when the user confirms. Do NOT pass property_id parameter - let it use the active project automatically.
 - **Route/Distance Queries:** ALWAYS use 'calculateRoute' when users ask about distance, directions, travel time, or routes between any two locations. Examples: "How far is Burj Khalifa from Sparkles?", "Distance between property and mall", "Directions to property". It returns ui_display_hint: 'CHAT'. Present the route summary textually.
 - **Nearby Places:** Use 'findNearestPlace' for finding amenities near properties. It returns ui_display_hint: 'CHAT'. Present results textually.
@@ -423,6 +425,22 @@ const realEstateAgent: AgentConfig = {
         additionalProperties: false,
       },
     },
+    {
+      type: "function",
+      name: "showPropertyBrochure",
+      description: "Shows a property brochure with download functionality when the user asks to see or share the brochure. Use when user asks 'Can I see the brochure?', 'Share the brochure', 'Show me the brochure', etc.",
+      parameters: {
+        type: "object",
+        properties: {
+          property_name: {
+            type: "string",
+            description: "The name of the property to show brochure for. If not provided, uses the currently active project.",
+          },
+        },
+        required: [],
+        additionalProperties: false,
+      },
+    },
   ],
 
   // Tool Logic Implementation
@@ -475,6 +493,10 @@ const realEstateAgent: AgentConfig = {
     
     showPropertyLocation: async ({ property_name }: { property_name?: string }, transcript: TranscriptItem[] = []) => {
         return await showPropertyLocation({ property_name }, realEstateAgent, transcript);
+    },
+    
+    showPropertyBrochure: async ({ property_name }: { property_name?: string }, transcript: TranscriptItem[] = []) => {
+        return await showPropertyBrochure({ property_name }, realEstateAgent, transcript);
     }
   },
 };
