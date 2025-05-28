@@ -10,7 +10,8 @@ import {
   calculateRoute,
   findNearestPlace,
   initiateScheduling,
-  completeScheduling
+  completeScheduling,
+  showPropertyLocation
 } from './tools';
 
 interface AgentMetadata extends BaseAgentMetadata {
@@ -113,6 +114,14 @@ LANGUAGE INSTRUCTIONS:
 - **STYLE:** warm, friendly and enthusiastic - like a helpful friend who's genuinely excited to help you find your dream home! Use a conversational tone that makes people feel comfortable and welcome.
 - **LENGTH:** absolute maximum 2 short sentences (≈ 30 words). Never write paragraphs.
 - Keep answers concise, especially when property cards (PROPERTY_LIST) or images (IMAGE_GALLERY) are being displayed by the UI based on your tool results. Let the UI show the details.
+- **NEVER SPEAK MAP URLS:** When showing location information, NEVER read out or mention long map URLs (like google.com/maps/...). Simply say "Here's the location" or "You can view it on the map" and let the UI display the interactive map.
+
+LOCATION & MAP QUERIES:
+- When users ask about location, map, or "where is this property", use 'showPropertyLocation' tool
+- Examples: "Where is this property?", "Show me the location", "Can I see the map?", "Where is [property name] located?"
+- The tool returns ui_display_hint: 'LOCATION_MAP' which shows an interactive map
+- Your response should be brief: "Here's the location of [property name]. You can view it on the interactive map."
+- NEVER mention or read out map URLs - they are very long and confusing when spoken
 
 SPECIAL TRIGGER MESSAGES:
 - Messages that start with {Trigger msg: ...} are NOT from the user. These are system triggers for specific automated responses.
@@ -135,6 +144,7 @@ TOOL USAGE & UI HINTS:
 - **Specific Property Details Request:** When the user asks about ONE specific property, use 'getProjectDetails' with the project_id/name. It returns ui_display_hint: 'PROPERTY_DETAILS'. Your text message can be slightly more descriptive but still concise.
 - **Lookup Property (Vector Search):** Use 'lookupProperty' for vague or feature-based searches (e.g., "find properties near the park"). It returns ui_display_hint: 'CHAT'. Summarize the findings from the tool's 'search_results' in your text response.
 - **Image Request:** Use 'getPropertyImages'. It returns ui_display_hint: 'IMAGE_GALLERY'. Your text MUST be brief: "Here are the images."
+- **Location/Map Request:** Use 'showPropertyLocation' when users ask about location, map, or where a property is. It returns ui_display_hint: 'LOCATION_MAP'. Your text MUST be brief: "Here's the location of [property name]. You can view it on the interactive map."
 - **Scheduling:** Use 'initiateScheduling' ONLY when the user confirms. Do NOT pass property_id parameter - let it use the active project automatically.
 - **Route/Distance Queries:** ALWAYS use 'calculateRoute' when users ask about distance, directions, travel time, or routes between any two locations. Examples: "How far is Burj Khalifa from Sparkles?", "Distance between property and mall", "Directions to property". It returns ui_display_hint: 'CHAT'. Present the route summary textually.
 - **Nearby Places:** Use 'findNearestPlace' for finding amenities near properties. It returns ui_display_hint: 'CHAT'. Present results textually.
@@ -397,6 +407,22 @@ const realEstateAgent: AgentConfig = {
         additionalProperties: false,
       },
     },
+    {
+      type: "function",
+      name: "showPropertyLocation",
+      description: "Shows a location map for a property when the user asks about location, map, or where a property is located. Use when user asks 'Where is this property?', 'Show me the location', 'Can I see the map?', etc.",
+      parameters: {
+        type: "object",
+        properties: {
+          property_name: {
+            type: "string",
+            description: "The name of the property to show location for. If not provided, uses the currently active project.",
+          },
+        },
+        required: [],
+        additionalProperties: false,
+      },
+    },
   ],
 
   // Tool Logic Implementation
@@ -445,6 +471,10 @@ const realEstateAgent: AgentConfig = {
     
     completeScheduling: async () => {
         return await completeScheduling(realEstateAgent);
+    },
+    
+    showPropertyLocation: async ({ property_name }: { property_name?: string }, transcript: TranscriptItem[] = []) => {
+        return await showPropertyLocation({ property_name }, realEstateAgent, transcript);
     }
   },
 };

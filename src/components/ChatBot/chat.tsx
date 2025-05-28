@@ -10,6 +10,7 @@ import PropertyList from "../PropertyComponents/PropertyList"
 import PropertyDetails from "../PropertyComponents/propertyDetails"
 import { VoiceWaveform } from "./VoiceWaveForm"
 import PropertyImageGallery from "../PropertyComponents/PropertyImageGallery"
+import LocationMap from "../PropertyComponents/LocationMap"
 
 // --- Appointment UI Components ---
 import TimePick from "../Appointment/timePick";
@@ -85,7 +86,8 @@ type ActiveDisplayMode =
   | 'VERIFICATION_FORM' // For VerificationForm
   | 'OTP_FORM' // For OTPInput
   | 'VERIFICATION_SUCCESS' // For showing verification success before returning to CHAT
-  | 'BOOKING_CONFIRMATION'; // For showing booking details card
+  | 'BOOKING_CONFIRMATION' // For showing booking details card
+  | 'LOCATION_MAP'; // For showing location map
 
 interface PropertyGalleryData {
   propertyName: string
@@ -99,6 +101,13 @@ interface BookingDetails {
   date: string;
   time: string;
   phoneNumber?: string;
+}
+
+// Add new interface for location map data
+interface LocationMapData {
+  propertyName: string
+  location: PropertyLocation
+  description?: string
 }
 
 // --- Agent Component ---
@@ -144,6 +153,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
   const [selectedPropertyDetails, setSelectedPropertyDetails] = useState<PropertyProps | null>(null);
   const [lastAgentTextMessage, setLastAgentTextMessage] = useState<string | null>(null);
   const [propertyGalleryData, setPropertyGalleryData] = useState<PropertyGalleryData | null>(null); // For gallery
+  const [locationMapData, setLocationMapData] = useState<LocationMapData | null>(null); // For location map
 
   // Add new state for audio context
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
@@ -298,6 +308,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
       setPropertyListData,
       setSelectedPropertyDetails,
       setPropertyGalleryData,
+      setLocationMapData, // Add location map setter
       setBookingDetails, // Add this new setter
   });
 
@@ -2234,6 +2245,11 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
   // }, [verificationSuccessful, sendSchedulingConfirmationTrigger]);
   // REMOVED EFFECT END
 
+  const handleCloseLocationMap = () => {
+    setLocationMapData(null);
+    setActiveDisplayMode('CHAT'); // Or a more context-aware previous state
+  }
+
   return (
     <div
       className="relative bg-blue-900 rounded-3xl overflow-hidden text-white flex flex-col"
@@ -2408,6 +2424,17 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
             </button>
           )}
 
+          {/* Back button for LOCATION_MAP */}
+          {activeDisplayMode === 'LOCATION_MAP' && (
+            <button
+              onClick={handleCloseLocationMap}
+              className="mb-2 ml-4 self-start bg-blue-700 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg flex items-center shadow"
+            >
+              <ArrowLeft size={16} className="mr-2" />
+              Back
+            </button>
+          )}
+
           {/* --- Main Content Area --- */}
           <div className={`flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-blue-700 scrollbar-track-blue-800 ${activeDisplayMode === 'CHAT' && transcriptItems.length === 0 && !lastAgentTextMessage ? 'flex items-center justify-center' : 'space-y-4'}`}>
             
@@ -2466,6 +2493,17 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
                   propertyName={propertyGalleryData.propertyName}
                   images={propertyGalleryData.images}
                   onClose={handleCloseGallery} 
+                />
+              </div>
+            )}
+
+            {activeDisplayMode === 'LOCATION_MAP' && locationMapData && (
+              <div className="w-full"> {/* Wrapper for consistent layout */}
+                <LocationMap
+                  propertyName={locationMapData.propertyName}
+                  location={locationMapData.location}
+                  description={locationMapData.description}
+                  onClose={handleCloseLocationMap} 
                 />
               </div>
             )}

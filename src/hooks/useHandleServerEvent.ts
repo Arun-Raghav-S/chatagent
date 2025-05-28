@@ -22,6 +22,7 @@ type ActiveDisplayMode =
   | 'PROPERTY_LIST' 
   | 'PROPERTY_DETAILS' 
   | 'IMAGE_GALLERY' 
+  | 'LOCATION_MAP'
   | 'SCHEDULING_FORM'
   | 'VERIFICATION_FORM'
   | 'OTP_FORM'
@@ -52,6 +53,7 @@ export interface UseHandleServerEventParams {
   setPropertyListData: Dispatch<SetStateAction<any | null>>;
   setSelectedPropertyDetails: Dispatch<SetStateAction<any | null>>;
   setPropertyGalleryData: Dispatch<SetStateAction<any | null>>;
+  setLocationMapData: Dispatch<SetStateAction<any | null>>;
   setBookingDetails: Dispatch<SetStateAction<any | null>>;
 }
 
@@ -73,6 +75,7 @@ export function useHandleServerEvent({
   setPropertyListData,
   setSelectedPropertyDetails,
   setPropertyGalleryData,
+  setLocationMapData,
   setBookingDetails,
 }: UseHandleServerEventParams) {
   // Removed context hook calls
@@ -190,6 +193,7 @@ export function useHandleServerEvent({
           setPropertyListData(null);
           setSelectedPropertyDetails(null);
           setPropertyGalleryData(null);
+          setLocationMapData(null);
           // Other view-specific data setters can be called here with null
 
           // Populate data for the target mode
@@ -199,6 +203,8 @@ export function useHandleServerEvent({
             setSelectedPropertyDetails(fnResult.property_details);
           } else if (fnResult.ui_display_hint === 'IMAGE_GALLERY' && fnResult.images_data) {
             setPropertyGalleryData(fnResult.images_data);
+          } else if (fnResult.ui_display_hint === 'LOCATION_MAP' && fnResult.location_data) {
+            setLocationMapData(fnResult.location_data);
           } else if (fnResult.ui_display_hint === 'SCHEDULING_FORM') {
             // Logic for scheduling form, e.g., if fnResult.scheduling_data exists
             // This might involve setting state for availableSlots, selectedProperty in chat.tsx
