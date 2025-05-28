@@ -57,13 +57,14 @@ export const findNearestPlace = async ({ query, reference_property }: { query: s
         if (response.ok && data.nearestPlaces && Array.isArray(data.nearestPlaces)) {
             console.log(`[findNearestPlace] Found ${data.nearestPlaces.length} nearest places:`, data.nearestPlaces);
             
-            // Format the results into a readable string
+            // Format the results into a concise, brief string - just name and location
             let resultMessage = "";
             if (data.nearestPlaces.length > 0) {
                 resultMessage = data.nearestPlaces.map((place: any, index: number) => {
-                    const rating = place.rating ? ` (Rating: ${place.rating}/5)` : "";
-                    return `${index + 1}. **${place.name}**${rating}\n   📍 ${place.address}`;
-                }).join('\n\n');
+                    // Extract just the essential location info (first part before comma usually)
+                    const briefLocation = place.address ? place.address.split(',')[0] : 'Location not available';
+                    return `${index + 1}. ${place.name} - ${briefLocation}`;
+                }).join('\n');
             } else {
                 resultMessage = "No places found matching your query.";
             }
@@ -72,7 +73,7 @@ export const findNearestPlace = async ({ query, reference_property }: { query: s
                 nearestPlaces: data.nearestPlaces,
                 nearestPlace: resultMessage, // Keep this for backward compatibility
                 ui_display_hint: 'CHAT',
-                message: `Here's what I found regarding "${query}" near ${reference_property}:`
+                message: `Here are the nearest ${query.toLowerCase()} near ${reference_property}:`
             };
         } else if (response.ok && data.error) {
             console.warn(`[findNearestPlace] Edge function returned an error: ${data.error}`);
