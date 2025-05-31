@@ -7,7 +7,9 @@ interface AgentMetadata extends BaseAgentMetadata {
   selectedDate?: string;
   selectedTime?: string;
   property_name?: string;
-  flow_context?: 'from_full_scheduling' | 'from_direct_auth' | 'from_scheduling_verification';
+  flow_context?: 'from_full_scheduling' | 'from_direct_auth' | 'from_scheduling_verification' | 'from_question_auth';
+  // New field for storing pending question after auth flow
+  pending_question?: string;
 }
 
 export const trackUserMessage = async ({ message }: { message: string }, realEstateAgent: any) => {
@@ -100,6 +102,26 @@ export const trackUserMessage = async ({ message }: { message: string }, realEst
                 time: metadata.selectedTime,
                 phoneNumber: metadata.phone_number
             }
+        };
+    } else if (metadata?.flow_context === 'from_question_auth') {
+        console.log("[trackUserMessage] Handling 'from_question_auth' context - user verified, answering pending question");
+        
+        // Get the pending question
+        const pendingQuestion = metadata.pending_question;
+        
+        if (realEstateAgent.metadata) {
+            // Mark user as verified and clear flow context
+            realEstateAgent.metadata.is_verified = true;
+            delete (realEstateAgent.metadata as any).flow_context;
+            delete (realEstateAgent.metadata as any).pending_question;
+        }
+        
+        // Return success with instructions to answer the pending question
+        return {
+            success: true,
+            answer_pending_question: true,
+            pending_question: pendingQuestion,
+            message: `Great! You're now verified. Let me answer your question: "${pendingQuestion}"`
         };
     }
     // END OF PRIORITY FLOW CONTEXT HANDLING
@@ -196,6 +218,30 @@ export const trackUserMessage = async ({ message }: { message: string }, realEst
     (realEstateAgent as any).questionCount = questionCount;
     
     console.log(`🔍 [trackUserMessage] Q#: ${questionCount}, Verified: ${is_verified}, Scheduled: ${has_scheduled}, Msg: "${message}"`);
+
+    // NEW AUTHENTICATION FLOW: Check if user needs verification after 2+ questions
+    if (!is_verified && questionCount > 2) {
+        console.log("[trackUserMessage] User not verified after 2+ questions, transferring to authentication for verification before proceeding");
+        
+        // Store the current question in metadata so it can be answered after verification
+        if (realEstateAgent.metadata) {
+            (realEstateAgent.metadata as AgentMetadata).pending_question = message;
+            (realEstateAgent.metadata as AgentMetadata).flow_context = 'from_question_auth';
+        }
+        
+        // Reset question count and transfer to authentication
+        (realEstateAgent as any).questionCount = 0;
+        
+        // CRITICAL: Return transfer immediately - don't process the question now
+        return { 
+            destination_agent: "authentication",
+            flow_context: 'from_question_auth',
+            came_from: "realEstate",
+            pending_question: message, // Pass the question to auth agent metadata
+            message: null, // Silent transfer
+            silentTransfer: true
+        };
+    }
 
     if (!is_verified && questionCount >= 7) {
       console.log("[trackUserMessage] User not verified after 7 questions, transferring to authentication");

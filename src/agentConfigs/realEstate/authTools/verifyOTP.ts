@@ -132,6 +132,7 @@ export const verifyOTP = async (
       console.log("[verifyOTP] OTP verified successfully based on server response.");
       
       const cameFrom = (agent.metadata as any)?.came_from;
+      const flowContext = (agent.metadata as any)?.flow_context;
       const metadataAny = agent.metadata as any; // Cache for convenience
 
       let destinationAgentName: string;
@@ -157,7 +158,14 @@ export const verifyOTP = async (
         transferData.selectedTime = metadataAny?.selectedTime;
         transferData.has_scheduled = true; // Mark as scheduled, verification was the last step
         
-      } else { // Came from realEstateAgent directly for general auth or other flows
+      } else if (flowContext === 'from_question_auth') {
+        // NEW FLOW: User came from realEstate after asking too many questions
+        destinationAgentName = 'realEstate';
+        transferData.flow_context = 'from_question_auth'; // Flag for realEstateAgent to answer pending question
+        transferData.pending_question = metadataAny?.pending_question; // Pass along the pending question
+        // Keep has_scheduled status as is (likely false)
+        
+      } else { // Came from realEstateAgent directly for general auth or other flows  
         destinationAgentName = 'realEstate';
         transferData.flow_context = 'from_direct_auth'; // Flag for realEstateAgent
         // is_verified, customer_name, phone_number are already in transferData

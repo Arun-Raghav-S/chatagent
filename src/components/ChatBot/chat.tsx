@@ -36,6 +36,12 @@ import { useHandleServerEvent } from "@/hooks/useHandleServerEvent";
 // Import debounce function
 import { debounce } from 'lodash';
 
+// Extended AgentMetadata interface to include new authentication flow properties
+interface ExtendedAgentMetadata extends AgentMetadata {
+  flow_context?: 'from_full_scheduling' | 'from_direct_auth' | 'from_scheduling_verification' | 'from_question_auth';
+  pending_question?: string;
+}
+
 interface PropertyUnit {
   type: string
 }
@@ -1535,17 +1541,50 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
                            selectedAgentName === 'scheduleMeeting' || 
                            selectedAgentName === 'authentication';
 
-                       // If the agent doesn't auto-trigger, then we send a simulated "hi" to get it started.
-                       // MODIFICATION: Also don't send "hi" if returning to realEstate after verification,
-                       // as a specific trigger is already being sent.
+                       // Check for different flow contexts
                        const isReturningToRealEstateAfterVerification = 
                            selectedAgentName === 'realEstate' &&
-                           (agentMetadata as any)?.flow_context === 'from_scheduling_verification';
+                           (agentMetadata as ExtendedAgentMetadata)?.flow_context === 'from_scheduling_verification';
+                           
+                       const isReturningToRealEstateAfterQuestionAuth = 
+                           selectedAgentName === 'realEstate' &&
+                           (agentMetadata as ExtendedAgentMetadata)?.flow_context === 'from_question_auth';
 
-                       const shouldSendSimulatedHi = !agentAutoTriggersFirstAction && !isReturningToRealEstateAfterVerification;
+                       // Only send "hi" on true initial load (no flow context)
+                       const isInitialAgentLoad = !(agentMetadata as ExtendedAgentMetadata)?.flow_context;
+
+                       const shouldSendSimulatedHi = !agentAutoTriggersFirstAction && 
+                                                    !isReturningToRealEstateAfterVerification && 
+                                                    !isReturningToRealEstateAfterQuestionAuth &&
+                                                    isInitialAgentLoad;
                        
-                       console.log(`[Effect] Updating session. Agent: ${selectedAgentName}, Auto-triggers: ${agentAutoTriggersFirstAction}, ReturningPostVerification: ${isReturningToRealEstateAfterVerification}, Sending simulated 'hi': ${shouldSendSimulatedHi}`);
-                       updateSession(shouldSendSimulatedHi); 
+                       // For the question auth flow, send the pending question instead of "hi"
+                       const shouldSendPendingQuestion = isReturningToRealEstateAfterQuestionAuth && 
+                                                         (agentMetadata as ExtendedAgentMetadata)?.pending_question;
+                       
+                       console.log(`[Effect] Updating session. Agent: ${selectedAgentName}, Auto-triggers: ${agentAutoTriggersFirstAction}, ReturningPostVerification: ${isReturningToRealEstateAfterVerification}, ReturningPostQuestionAuth: ${isReturningToRealEstateAfterQuestionAuth}, IsInitialLoad: ${isInitialAgentLoad}, Sending simulated 'hi': ${shouldSendSimulatedHi}, Sending pending question: ${shouldSendPendingQuestion}`);
+                       
+                       if (shouldSendPendingQuestion) {
+                           const pendingQuestion = (agentMetadata as ExtendedAgentMetadata).pending_question;
+                           console.log(`[Effect] Sending pending question after auth: "${pendingQuestion}"`);
+                           updateSession(false); // Don't send "hi"
+                           
+                           // Send the pending question after a small delay to ensure session is updated
+                           setTimeout(() => {
+                               if (pendingQuestion) {
+                                   sendSimulatedUserMessage(pendingQuestion);
+                               }
+                               
+                               // Clear the pending question from metadata
+                               setAgentMetadata(prev => ({
+                                   ...prev,
+                                   flow_context: undefined,
+                                   pending_question: undefined
+                               } as ExtendedAgentMetadata));
+                           }, 500);
+                       } else {
+                           updateSession(shouldSendSimulatedHi);
+                       }
                        
                        // Initialize mic state after session is updated (since mic starts unmuted)
                        setTimeout(() => {

@@ -12,24 +12,110 @@ export const getAuthInstructions = (metadata: AgentMetadata | undefined | null) 
   const language = metadata?.language || "English";
   const cameFrom = (metadata as any)?.came_from || "the main agent";
   const customerName = metadata?.customer_name;
+  const flowContext = (metadata as any)?.flow_context;
+
+  // Determine welcome message based on flow context
+  let welcomeMessage = "";
+  let contextExplanation = "";
+  
+  if (flowContext === 'from_question_auth') {
+    // User came here because they asked too many questions without being verified
+    contextExplanation = "- **Flow Context:** User asked multiple questions and needs verification before proceeding";
+    
+    // Different welcome messages for this flow
+    switch(language) {
+      case "English":
+        welcomeMessage = "Hey there! 😊 I need to verify you quickly so you can ask more questions. Please fill out this quick form!";
+        break;
+      case "Hindi":
+        welcomeMessage = "नमस्ते! 😊 मुझे आपको जल्दी से verify करना होगा ताकि आप और सवाल पूछ सकें। कृपया इस छोटे से फॉर्म को भरें!";
+        break;
+      case "Tamil":
+        welcomeMessage = "வணக்கம்! 😊 நீங்கள் மேலும் கேள்விகள் கேட்க நான் உங்களை விரைவாக verify செய்ய வேண்டும். தயவுசெய்து இந்த சிறிய படிவத்தை பூர்த்தி செய்யுங்கள்!";
+        break;
+      case "Telugu":
+        welcomeMessage = "హలో! 😊 మీరు మరిన్ని ప్రశ్నలు అడగడానికి నేను మిమ్మల్ని త్వరగా verify చేయాలి। దయచేసి ఈ చిన్న ఫారమ్‌ను పూరించండి!";
+        break;
+      case "Malayalam":
+        welcomeMessage = "ഹലോ! 😊 നിങ്ങൾക്ക് കൂടുതൽ ചോദ്യങ്ങൾ ചോദിക്കാൻ ഞാൻ നിങ്ങളെ വേഗത്തിൽ verify ചെയ്യേണ്ടതുണ്ട്। ദയവായി ഈ ചെറിയ ഫോം പൂരിപ്പിക്കുക!";
+        break;
+      case "Spanish":
+        welcomeMessage = "¡Hola! 😊 Necesito verificarte rápidamente para que puedas hacer más preguntas. ¡Por favor completa este formulario rápido!";
+        break;
+      case "French":
+        welcomeMessage = "Salut! 😊 Je dois vous vérifier rapidement pour que vous puissiez poser plus de questions. Veuillez remplir ce formulaire rapide!";
+        break;
+      case "German":
+        welcomeMessage = "Hallo! 😊 Ich muss Sie schnell verifizieren, damit Sie weitere Fragen stellen können. Bitte füllen Sie dieses kurze Formular aus!";
+        break;
+      case "Chinese":
+        welcomeMessage = "你好！😊 我需要快速验证您，这样您就可以问更多问题了。请填写这个快速表格！";
+        break;
+      case "Japanese":
+        welcomeMessage = "こんにちは！😊 もっと質問していただけるよう、迅速に認証する必要があります。この簡単なフォームに記入してください！";
+        break;
+      case "Arabic":
+        welcomeMessage = "مرحبا! 😊 أحتاج إلى التحقق منك بسرعة حتى تتمكن من طرح المزيد من الأسئلة. يرجى ملء هذا النموذج السريع!";
+        break;
+      case "Russian":
+        welcomeMessage = "Привет! 😊 Мне нужно быстро вас верифицировать, чтобы вы могли задать больше вопросов. Пожалуйста, заполните эту быструю форму!";
+        break;
+      default:
+        welcomeMessage = "Hey there! 😊 I need to verify you quickly so you can ask more questions. Please fill out this quick form!";
+    }
+  } else {
+    // Original scheduling flow welcome messages
+    contextExplanation = "- **Flow Context:** User came for property scheduling verification";
+    
+    switch(language) {
+      case "English":
+        welcomeMessage = "Hey there! 😊 I'm so excited to help you! Just fill out this quick form and we'll get you all set up!";
+        break;
+      case "Hindi":
+        welcomeMessage = "नमस्ते! 😊 मैं आपकी मदद करने के लिए बहुत उत्साहित हूं! बस इस छोटे से फॉर्म को भरें और हम आपको तैयार कर देंगे!";
+        break;
+      case "Tamil":
+        welcomeMessage = "வணக்கம்! 😊 உங்களுக்கு உதவ நான் மிகவும் உற்சாகமாக இருக்கிறேன்! இந்த சிறிய படிவத்தை பூர்த்தி செய்யுங்கள், நாங்கள் உங்களை தயார் செய்வோம்!";
+        break;
+      case "Telugu":
+        welcomeMessage = "హలో! 😊 మీకు సహాయం చేయడంలో నేను చాలా ఉత్సాహంగా ఉన్నాను! ఈ చిన్న ఫారమ్‌ను పూరించండి మరియు మేము మిమ్మల్ని సిద్ధం చేస్తాము!";
+        break;
+      case "Malayalam":
+        welcomeMessage = "ഹലോ! 😊 നിങ്ങളെ സഹായിക്കാൻ എനിക്ക് വളരെ സന്തോഷമുണ്ട്! ഈ ചെറിയ ഫോം പൂരിപ്പിക്കുക, ഞങ്ങൾ നിങ്ങളെ തയ്യാറാക്കാം!";
+        break;
+      case "Spanish":
+        welcomeMessage = "¡Hola! 😊 ¡Estoy muy emocionado de ayudarte! ¡Solo completa este formulario rápido y te tendremos listo!";
+        break;
+      case "French":
+        welcomeMessage = "Salut! 😊 Je suis très enthousiaste de vous aider! Remplissez simplement ce formulaire rapide et nous vous préparerons!";
+        break;
+      case "German":
+        welcomeMessage = "Hallo! 😊 Ich freue mich sehr, Ihnen zu helfen! Füllen Sie einfach dieses kurze Formular aus und wir bereiten Sie vor!";
+        break;
+      case "Chinese":
+        welcomeMessage = "你好！😊 我很兴奋能帮助您！只需填写这个快速表格，我们就会为您准备好一切！";
+        break;
+      case "Japanese":
+        welcomeMessage = "こんにちは！😊 お手伝いできてとても嬉しいです！この簡単なフォームに記入していただければ、準備完了です！";
+        break;
+      case "Arabic":
+        welcomeMessage = "مرحبا! 😊 أنا متحمس جداً لمساعدتك! فقط املأ هذا النموذج السريع وسنجهزك!";
+        break;
+      case "Russian":
+        welcomeMessage = "Привет! 😊 Я очень рад помочь вам! Просто заполните эту быструю форму, и мы подготовим вас!";
+        break;
+      default:
+        welcomeMessage = "Hey there! 😊 I'm so excited to help you! Just fill out this quick form and we'll get you all set up!";
+    }
+  }
 
   return `You are an authentication assistant. Your primary goal is to verify the user's phone number via OTP.
 - **STYLE:** warm, friendly and encouraging - like a helpful friend who's genuinely excited to help you get verified! Use positive language that makes people feel comfortable and supported.
 - **LENGTH:** absolute maximum 2 short sentences (≈ 30 words). Never write paragraphs.
 
-***IMPORTANT: YOUR VERY FIRST MESSAGE MUST BE A WELCOME MESSAGE IN ${language}:***
-- English: "Hey there! 😊 I'm so excited to help you! Just fill out this quick form and we'll get you all set up!"
-- Hindi: "नमस्ते! 😊 मैं आपकी मदद करने के लिए बहुत उत्साहित हूं! बस इस छोटे से फॉर्म को भरें और हम आपको तैयार कर देंगे!"
-- Tamil: "வணக்கம்! 😊 உங்களுக்கு உதவ நான் மிகவும் உற்சாகமாக இருக்கிறேன்! இந்த சிறிய படிவத்தை பூர்த்தி செய்யுங்கள், நாங்கள் உங்களை தயார் செய்வோம்!"
-- Telugu: "హలో! 😊 మీకు సహాయం చేయడంలో నేను చాలా ఉత్సాహంగా ఉన్నాను! ఈ చిన్న ఫారమ్‌ను పూరించండి మరియు మేము మిమ్మల్ని సిద్ధం చేస్తాము!"
-- Malayalam: "ഹലോ! 😊 നിങ്ങളെ സഹായിക്കാൻ എനിക്ക് വളരെ സന്തോഷമുണ്ട്! ഈ ചെറിയ ഫോം പൂരിപ്പിക്കുക, ഞങ്ങൾ നിങ്ങളെ തയ്യാറാക്കാം!"
-- Spanish: "¡Hola! 😊 ¡Estoy muy emocionado de ayudarte! ¡Solo completa este formulario rápido y te tendremos listo!"
-- French: "Salut! 😊 Je suis très enthousiaste de vous aider! Remplissez simplement ce formulaire rapide et nous vous préparerons!"
-- German: "Hallo! 😊 Ich freue mich sehr, Ihnen zu helfen! Füllen Sie einfach dieses kurze Formular aus und wir bereiten Sie vor!"
-- Chinese: "你好！😊 我很兴奋能帮助您！只需填写这个快速表格，我们就会为您准备好一切！"
-- Japanese: "こんにちは！😊 お手伝いできてとても嬉しいです！この簡単なフォームに記入していただければ、準備完了です！"
-- Arabic: "مرحبا! 😊 أنا متحمس جداً لمساعدتك! فقط املأ هذا النموذج السريع وسنجهزك!"
-- Russian: "Привет! 😊 Я очень рад помочь вам! Просто заполните эту быструю форму, и мы подготовим вас!"
+***IMPORTANT: YOUR VERY FIRST MESSAGE MUST BE:***
+"${welcomeMessage}"
+
 *** NEVER MENTION THE EXISTENCE OF AGENTS OR TOOLS TO THE USER, NEVER MENDTION THAT U ARE TRANSFERRING TO ANOTHER AGENT, YOU ARE NEVER TO MENTION THE AUTHENTICATION,SCHEDULING AND REALESTATE AGENTS ***
 
 **AVAILABLE TOOLS: You have access to these tools ONLY:**
@@ -43,6 +129,7 @@ export const getAuthInstructions = (metadata: AgentMetadata | undefined | null) 
 
 **Current Status**:
 - Came from: ${cameFrom}
+${contextExplanation}
 ${customerName ? `- User Name Provided: ${customerName}` : `- User Name: Not yet provided`}
 
 **Strict Flow:**
