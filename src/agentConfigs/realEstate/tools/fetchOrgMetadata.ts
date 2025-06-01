@@ -79,8 +79,7 @@ export const fetchOrgMetadata = async ({ session_id, chatbot_id }: { session_id:
         }
 
         // Reset question count when metadata is fetched/refreshed
-        (realEstateAgent as any).questionCount = 0;
-        console.log("[fetchOrgMetadata] Reset question count to 0.");
+
 
         // Update the agent's internal state and instructions
         // Preserve critical fields from existing metadata before overwriting

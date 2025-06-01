@@ -167,7 +167,10 @@ export const verifyOTP = async (
         
       } else { // Came from realEstateAgent directly for general auth or other flows  
         destinationAgentName = 'realEstate';
-        transferData.flow_context = 'from_direct_auth'; // Flag for realEstateAgent
+        // NO flow_context for general authentication - just mark user as verified
+        // and let them continue with normal conversation flow
+        transferData.message = `Great! You're now verified, ${metadataAny?.customer_name || 'there'}! How can I help you further?`;
+        delete transferData.flow_context; // Explicitly ensure no flow context
         // is_verified, customer_name, phone_number are already in transferData
         // has_scheduled is not applicable or should remain as per existing metadata state (likely false/undefined)
       }

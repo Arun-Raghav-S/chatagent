@@ -78,6 +78,14 @@ export const getAvailableSlots = async (
 
   console.log(`[getAvailableSlots] Returning result with property_name: "${propertyName}"`);
   
+  // CRITICAL: Store verification status in agent metadata for later use
+  if (agent.metadata) {
+    agent.metadata.is_verified = isVerified;
+    (agent.metadata as any).user_verification_status = userVerificationStatus;
+    (agent.metadata as any).lastReturnedPropertyId = effectivePropertyId;
+    console.log(`[getAvailableSlots] Stored verification status in metadata: is_verified=${isVerified}, user_verification_status=${userVerificationStatus}`);
+  }
+  
   return { 
     slots: slots,
     timeSlots: standardTimeSlots,

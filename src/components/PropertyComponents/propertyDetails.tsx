@@ -150,7 +150,6 @@ export default function PropertyDetails({
     return failedImages.current.has(src) ? "/placeholder.svg" : src;
   };
 
-  console.log("BROCHURE", brochure);
 
   return (
     <div className="overflow-hidden rounded-lg text-black">

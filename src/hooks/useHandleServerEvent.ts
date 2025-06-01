@@ -393,6 +393,10 @@ export function useHandleServerEvent({
               ...(fnResult as any), // Layer: Fields from the transferring tool's result (takes highest precedence for its specific fields)
               
               came_from: cameFromContext, // Explicitly set came_from
+              
+              // CRITICAL: Properly pass flow_context for authentication
+              flow_context: fnResult.flow_context || (currentAgent.metadata as any)?.flow_context,
+              pending_question: fnResult.pending_question || (currentAgent.metadata as any)?.pending_question,
             };
 
             // Debug log to check if property information is being transferred correctly
@@ -417,6 +421,9 @@ export function useHandleServerEvent({
             newAgentConfig.metadata = newAgentPreparedMetadata;
             
             console.log("[handleFunctionCall] Final merged metadata for new agent:", newAgentConfig.metadata);
+
+            // CRITICAL DEBUG: Log verification status transfer
+            console.log(`🔍 [handleFunctionCall] is_verified status transfer: ${currentAgent.metadata?.is_verified} → ${newAgentConfig.metadata?.is_verified}`);
 
             // First cancel any active response to avoid the "conversation_already_has_active_response" error
             if (hasActiveResponseRef.current) {
@@ -583,68 +590,60 @@ export function useHandleServerEvent({
                   }
                 }, 200);
               } else if (newAgentConfig && newAgentConfig.name === "realEstate" && (fnResult.flow_context === "from_scheduling_verification" || (newAgentPreparedMetadata as any).flow_context === "from_scheduling_verification")) {
-                // Special handling for return to realEstate after scheduling verification
-                console.log("[handleFunctionCall] realEstate agent transfer after scheduling verification - calling completeScheduling directly");
+                // Simple handling for return to realEstate after scheduling
+                console.log("[handleFunctionCall] realEstate agent transfer after scheduling - will auto-call completeScheduling");
                 
-                // Clear the flow context from the new agent's metadata to prevent loops
+                // Clear the flow context to prevent loops
                 if (newAgentConfig.metadata) {
                   delete (newAgentConfig.metadata as any).flow_context;
                   console.log("[handleFunctionCall] Cleared flow_context from realEstate agent metadata");
                 }
                 
-                // DIRECT CALL TO completeScheduling - NO MORE TRIGGER MESSAGES!
-                console.log("🚨🚨🚨 [DIRECT CALL] Calling completeScheduling directly instead of sending trigger message");
+                // Check if there's a trigger message to send
+                const triggerMessage = fnResult.trigger_message || (newAgentPreparedMetadata as any).trigger_message;
                 
-                const completeSchedulingTool = newAgentConfig?.toolLogic?.completeScheduling;
-                if (typeof completeSchedulingTool === 'function') {
-                  console.log("🚨🚨🚨 [DIRECT CALL] Found completeScheduling tool, calling it now...");
+                if (triggerMessage) {
+                  console.log(`🚨🚨🚨 [handleFunctionCall] Sending trigger message after scheduling transfer: "${triggerMessage}"`);
                   
-                  // Call completeScheduling directly with a small delay to ensure transfer is complete
                   setTimeout(() => {
-                    completeSchedulingTool({}, transcriptItems || []).then((result: any) => {
-                      console.log("🚨🚨🚨 [DIRECT CALL] completeScheduling result:", result);
+                    // Cancel any active response first
+                    if (hasActiveResponseRef.current) {
+                      console.log("[handleFunctionCall] Cancelling active response before sending trigger message");
+                      sendClientEvent({ type: "response.cancel" }, "(cancelling before trigger message)");
+                      hasActiveResponseRef.current = false;
+                    }
+                    
+                    // Wait for cancellation to process
+                    setTimeout(() => {
+                      const triggerMessageId = generateSafeId();
+                      console.log(`🚨🚨🚨 [handleFunctionCall] Sending trigger message as user message: "${triggerMessage}"`);
                       
-                      if (result && result.message) {
-                        // Instead of just adding to transcript, send a SPEAK trigger so the agent says it out loud
-                        const speakTriggerMessageId = generateSafeId();
-                        const speakTriggerText = `{Trigger msg: Say "${result.message}"}`;
-                        console.log(`🚨🚨🚨 [DIRECT CALL] 🎤 Sending SPEAK trigger: '${speakTriggerText}'`);
-                        
-                        sendClientEvent({
-                          type: "conversation.item.create",
-                          item: {
-                            id: speakTriggerMessageId,
-                            type: "message",
-                            role: "user",
-                            content: [{ type: "input_text", text: speakTriggerText }]
-                          }
-                        }, "(SPEAK trigger for booking confirmation)");
-                        
-                        // Trigger response to make the agent speak the message
-                        setTimeout(() => {
-                          sendClientEvent({ type: "response.create" }, "(trigger response for SPEAK booking confirmation)");
-                        }, 100);
-                        
-                        // Update UI display mode if specified
-                        if (result.ui_display_hint) {
-                          console.log(`🚨🚨🚨 [DIRECT CALL] Setting UI display hint: ${result.ui_display_hint}`);
-                          setActiveDisplayMode(result.ui_display_hint as ActiveDisplayMode);
-                          
-                          if (result.ui_display_hint === 'BOOKING_CONFIRMATION' && result.booking_details) {
-                            console.log(`🚨🚨🚨 [DIRECT CALL] Setting booking details:`, result.booking_details);
-                            if (setBookingDetails) {
-                              setBookingDetails(result.booking_details);
-                            }
-                          }
+                      sendClientEvent({
+                        type: "conversation.item.create",
+                        item: {
+                          id: triggerMessageId,
+                          type: "message",
+                          role: "user",
+                          content: [{ type: "input_text", text: triggerMessage }]
                         }
-                      }
-                    }).catch((error: any) => {
-                      console.error("🚨🚨🚨 [DIRECT CALL] Error calling completeScheduling:", error);
-                      addTranscriptMessage(generateSafeId(), 'assistant', 'There was an error completing your booking confirmation.');
-                    });
-                  }, 300); // Small delay to ensure transfer is complete
+                      }, "(auto-trigger message after scheduling)");
+                      
+                      // Trigger response to process the trigger message
+                      setTimeout(() => {
+                        console.log(`🚨🚨🚨 [handleFunctionCall] Triggering response for trigger message`);
+                        sendClientEvent({ type: "response.create" }, "(trigger response for scheduling trigger)");
+                      }, 100);
+                    }, 200);
+                  }, 300);
                 } else {
-                  console.error("🚨🚨🚨 [DIRECT CALL] completeScheduling tool not found on realEstate agent!");
+                  console.log("[handleFunctionCall] Transfer complete - realEstate agent should auto-call completeScheduling");
+                  // Still trigger a response even without a trigger message
+                  setTimeout(() => {
+                    if (!hasActiveResponseRef.current) {
+                      console.log("[handleFunctionCall] Triggering response for scheduling transfer without trigger message");
+                      sendClientEvent({ type: "response.create" }, "(trigger response after scheduling transfer)");
+                    }
+                  }, 300);
                 }
               } else if (newAgentConfig && newAgentConfig.name === "realEstate" && (fnResult.flow_context === "from_question_auth" || (newAgentPreparedMetadata as any).flow_context === "from_question_auth")) {
                 // Special handling for return to realEstate after authentication with pending question
@@ -688,12 +687,20 @@ export function useHandleServerEvent({
                       
                       // Trigger response to the pending question
                       setTimeout(() => {
+                        console.log(`🚨🚨🚨 [AUTO PENDING] Triggering response for pending question`);
                         sendClientEvent({ type: "response.create" }, "(trigger response for pending question)");
                       }, 100);
                     }, 200);
                   }, 300); // Small delay to ensure transfer is complete
                 } else {
                   console.warn("[handleFunctionCall] No pending question found after authentication transfer");
+                  // Even if no pending question, we should trigger a response for the transfer
+                  setTimeout(() => {
+                    if (!hasActiveResponseRef.current) {
+                      console.log("[handleFunctionCall] Triggering response for authentication transfer without pending question");
+                      sendClientEvent({ type: "response.create" }, "(trigger response after auth transfer)");
+                    }
+                  }, 300);
                 }
               }
             } else {
@@ -795,102 +802,18 @@ export function useHandleServerEvent({
           });
           sendClientEvent({ type: "response.create" });
           
-          // After booking confirmation, send a follow-up trigger message
-          setTimeout(() => {
-            const followUpTriggerMessageId = generateSafeId();
-            const followUpTriggerText = "{Trigger msg: Say How else can I help you?}";
-            console.log(`[handleFunctionCall] Sending follow-up trigger after booking confirmation: '${followUpTriggerText}'`);
-            
-            sendClientEvent({
-              type: "conversation.item.create",
-              item: {
-                id: followUpTriggerMessageId,
-                type: "message",
-                role: "user",
-                content: [{ type: "input_text", text: followUpTriggerText }]
-              }
-            }, "(follow-up trigger after booking confirmation)");
-            
-            // Trigger response to the follow-up message
-            setTimeout(() => {
-              sendClientEvent({ type: "response.create" }, "(trigger response for follow-up after booking)");
-            }, 100);
-          }, 3000); // Wait 3 seconds after booking confirmation
-          
           return; // Skip the regular function handling below
         }
 
-        // Special handling for scheduleVisit function result - ADD AUTOMATIC FALLBACK
+        // Special handling for scheduleVisit function result
         if (fnResult && functionCallParams.name === "scheduleVisit") {
           console.log("[handleFunctionCall] scheduleVisit result processed:", fnResult);
-          
-          // CRITICAL FALLBACK: If scheduleVisit succeeds but agent is scheduleMeeting, 
-          // we need to ensure completeScheduling gets called
-          if (fnResult.booking_confirmed === true && selectedAgentName === "scheduleMeeting") {
-            console.log("🚨 [CRITICAL FALLBACK] scheduleVisit succeeded for scheduleMeeting agent");
-            console.log("🚨 [CRITICAL FALLBACK] Will monitor next response - if no completeScheduling called, will auto-trigger");
-            
-            // Set a flag to monitor the next response
-            (window as any).__scheduleVisitSucceeded = true;
-            (window as any).__scheduleVisitSuccessData = fnResult;
-            
-            // Set a timer to automatically call completeScheduling if the agent doesn't
-            setTimeout(async () => {
-              if ((window as any).__scheduleVisitSucceeded) {
-                console.log("🚨🚨🚨 [EMERGENCY FALLBACK] scheduleMeeting agent failed to call completeScheduling!");
-                console.log("🚨🚨🚨 [EMERGENCY FALLBACK] Auto-calling completeScheduling now...");
-                
-                // Clear the flag
-                (window as any).__scheduleVisitSucceeded = false;
-                
-                // Get the scheduling agent and call completeScheduling
-                const schedulingAgent = selectedAgentConfigSet?.find(a => a.name === "scheduleMeeting");
-                const completeSchedulingTool = schedulingAgent?.toolLogic?.completeScheduling;
-                
-                if (typeof completeSchedulingTool === 'function') {
-                  try {
-                    const completionResult = await completeSchedulingTool({}, transcriptItems || []);
-                    console.log("🚨 [EMERGENCY FALLBACK] completeScheduling called successfully:", completionResult);
-                    
-                    // Process the completion result manually
-                    if (completionResult) {
-                      // Handle agent transfer if specified
-                      if (completionResult.destination_agent) {
-                        console.log(`🚨 [EMERGENCY FALLBACK] Transferring to agent: ${completionResult.destination_agent}`);
-                        setSelectedAgentName(completionResult.destination_agent);
-                      }
-                      
-                      // Handle booking details and UI hints
-                      if (completionResult.booking_details) {
-                        console.log("🚨 [EMERGENCY FALLBACK] Setting booking details:", completionResult.booking_details);
-                        setBookingDetails(completionResult.booking_details);
-                      }
-                      
-                      if (completionResult.ui_display_hint === 'BOOKING_CONFIRMATION') {
-                        console.log("🚨 [EMERGENCY FALLBACK] Setting display mode to BOOKING_CONFIRMATION");
-                        setActiveDisplayMode('BOOKING_CONFIRMATION');
-                      }
-                      
-                      // Add confirmation message
-                      if (completionResult.message) {
-                        addTranscriptMessage(generateSafeId(), 'assistant', completionResult.message);
-                      }
-                    }
-                  } catch (error) {
-                    console.error("🚨 [EMERGENCY FALLBACK] Error calling completeScheduling:", error);
-                  }
-                } else {
-                  console.error("🚨 [EMERGENCY FALLBACK] completeScheduling tool not found!");
-                }
-              }
-            }, 2000); // Wait 2 seconds for the agent to call completeScheduling
-          }
+          // No fallback needed - scheduleVisit now properly transfers to realEstate agent
         }
 
-        // Check if this was a completeScheduling call - clear the fallback flag
-        if (functionCallParams.name === "completeScheduling" && (window as any).__scheduleVisitSucceeded) {
-          console.log("✅ [FALLBACK CLEARED] Agent successfully called completeScheduling");
-          (window as any).__scheduleVisitSucceeded = false;
+        // Check if this was a completeScheduling call
+        if (functionCallParams.name === "completeScheduling") {
+          console.log("[handleFunctionCall] completeScheduling called successfully");
         }
 
         // Send regular function output for other non-silent, non-transferring tools
@@ -1034,6 +957,18 @@ export function useHandleServerEvent({
         )) {
           console.log(`[Transcript] Filtering OTP verification message from transcript: "${text}"`);
           break; // Don't add OTP messages to the visible transcript
+        }
+
+        // Filter out pending questions from transcript - they should be processed but not shown to user
+        if (role === "user" && text === "I am interested in something else") {
+          console.log(`[Transcript] Filtering pending question from transcript: "${text}"`);
+          break; // Don't add pending questions to the visible transcript
+        }
+
+        // Filter out TRIGGER_BOOKING_CONFIRMATION from transcript - it's an internal trigger
+        if (role === "user" && text === "TRIGGER_BOOKING_CONFIRMATION") {
+          console.log(`[Transcript] Filtering TRIGGER_BOOKING_CONFIRMATION from transcript: "${text}"`);
+          break; // Don't add trigger messages to the visible transcript
         }
 
         if(isTransferringAgentRef.current && role==="assistant") {
@@ -1458,6 +1393,84 @@ export function useHandleServerEvent({
       if (functionCallCount === 0) {
         console.log(`🚨🚨🚨 [Server Event Hook] NO FUNCTION CALLS FOUND! Agent ${currentAgentNameInResponse} completed response without calling any tools`);
         console.log(`🚨🚨🚨 [Server Event Hook] This might indicate the agent is not following instructions for TRIGGER_BOOKING_CONFIRMATION`);
+        
+        // Special handling for realEstate agent after scheduling completion
+        if (currentAgentNameInResponse === "realEstate") {
+          const currentAgent = selectedAgentConfigSet?.find(a => a.name === currentAgentNameInResponse);
+          const metadata = currentAgent?.metadata as any;
+          
+          // Check if this is a realEstate agent that should auto-call completeScheduling
+          // CRITICAL FIX: Only trigger if:
+          // 1. Has scheduling data (selectedDate, selectedTime, property_name)
+          // 2. User is verified
+          // 3. Has NOT already completed the scheduling confirmation (check scheduling_completed flag only)
+          const hasSchedulingData = metadata?.selectedDate && metadata?.selectedTime && metadata?.property_name;
+          const isVerified = metadata?.is_verified === true;
+          const hasNotCompletedScheduling = metadata?.scheduling_completed !== true;  // Only check scheduling_completed
+          const isFromSchedulingFlow = metadata?.flow_context === 'from_scheduling_verification';
+          
+          console.log(`🚨🚨🚨 [Server Event Hook] CompleteScheduling trigger check:`, {
+            hasSchedulingData,
+            isVerified,
+            hasNotCompletedScheduling,
+            isFromSchedulingFlow,
+            selectedDate: metadata?.selectedDate,
+            selectedTime: metadata?.selectedTime,
+            property_name: metadata?.property_name,
+            has_scheduled: metadata?.has_scheduled,
+            scheduling_completed: metadata?.scheduling_completed,
+            flow_context: metadata?.flow_context
+          });
+          
+          if (hasSchedulingData && isVerified && hasNotCompletedScheduling) {
+            console.log(`🚨🚨🚨 [Server Event Hook] realEstate agent should have called completeScheduling! Triggering it manually.`);
+            
+            // Clear flow_context to prevent loops
+            if (metadata?.flow_context) {
+              delete metadata.flow_context;
+              console.log("[Server Event Hook] Cleared flow_context to prevent loops");
+            }
+            
+            // Call completeScheduling tool directly
+            const completeSchedulingTool = currentAgent?.toolLogic?.completeScheduling;
+            if (typeof completeSchedulingTool === 'function') {
+              setTimeout(async () => {
+                try {
+                  console.log("[Server Event Hook] Manually calling completeScheduling tool");
+                  const result = await completeSchedulingTool({}, transcriptItems || []);
+                  console.log("[Server Event Hook] Manual completeScheduling result:", result);
+                  
+                  // If the tool returns a message, add it to the transcript
+                  if (result?.message) {
+                    const newMessageId = generateSafeId();
+                    addTranscriptMessage(newMessageId, 'assistant', result.message);
+                    
+                    // Handle UI display hint if present
+                    if (result.ui_display_hint === 'BOOKING_CONFIRMATION' && result.booking_details) {
+                      setActiveDisplayMode('BOOKING_CONFIRMATION');
+                      if (setBookingDetails) {
+                        setBookingDetails(result.booking_details);
+                      }
+                      
+                      // Auto-transition back to CHAT after delay
+                      setTimeout(() => {
+                        setActiveDisplayMode('CHAT');
+                      }, 15000);
+                    }
+                    
+                    // CRITICAL: Mark scheduling as completed to prevent repeated calls
+                    if (currentAgent?.metadata) {
+                      (currentAgent.metadata as any).has_scheduled = true;
+                      console.log("[Server Event Hook] Marked has_scheduled = true to prevent repeated completeScheduling calls");
+                    }
+                  }
+                } catch (error) {
+                  console.error("[Server Event Hook] Error manually calling completeScheduling:", error);
+                }
+              }, 500);
+            }
+          }
+        }
       }
     } else {
       console.log(`🚨🚨🚨 [Server Event Hook] NO OUTPUT FOUND in response! This is unusual.`);

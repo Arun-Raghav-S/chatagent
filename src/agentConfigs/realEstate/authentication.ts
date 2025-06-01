@@ -14,11 +14,21 @@ export const getAuthInstructions = (metadata: AgentMetadata | undefined | null) 
   const customerName = metadata?.customer_name;
   const flowContext = (metadata as any)?.flow_context;
 
+  // DEBUG: Log what flow context we received
+  console.log("🚨🚨🚨 [AUTH AGENT] getAuthInstructions called with metadata:", {
+    flowContext,
+    cameFrom,
+    customerName,
+    language,
+    fullMetadata: metadata
+  });
+
   // Determine welcome message and context based on flow
   let welcomeMessage = "";
   let flowDescription = "";
   
   if (flowContext === 'from_question_auth') {
+    console.log("🚨🚨🚨 [AUTH AGENT] Using 'from_question_auth' flow - CORRECT!");
     // User came here because they asked too many questions without being verified
     flowDescription = "User needs quick verification to continue asking questions";
     
@@ -64,6 +74,7 @@ export const getAuthInstructions = (metadata: AgentMetadata | undefined | null) 
         welcomeMessage = "Hey there! 😊 I need to verify you quickly so you can ask more questions. Please fill out this quick form!";
     }
   } else {
+    console.log("🚨🚨🚨 [AUTH AGENT] Using default scheduling flow - flow_context was:", flowContext);
     // Original scheduling flow welcome messages
     flowDescription = "User came from scheduling flow and needs verification to proceed";
     
@@ -153,8 +164,11 @@ ${customerName ?
 
 ### Step 5: Verify OTP
 - User submits OTP → Call verifyOTP tool
-- **If successful:** Tool returns destination_agent → **Your response MUST be EMPTY** (transfer happens automatically)
+- **CRITICAL VERIFICATION CHECK:** Only confirm success if metadata.is_verified becomes true
+- **If successful AND is_verified=true:** Say "Perfect! You're now verified! 🎉" then transfer happens automatically  
+- **If tool succeeds but is_verified=false:** Say "There was an issue with verification. Please try again."
 - **If failed:** Relay error message and allow retry
+- **NEVER mention:** Agents, transfers, or returning to other systems
 
 ## 🛠️ AVAILABLE TOOLS
 
@@ -174,14 +188,22 @@ ${customerName ?
 **Language:** Respond ONLY in ${language}
 **Never mention:** Agents, tools, transfers, or technical processes
 
+## 🔄 VERIFICATION STATUS HANDLING
+
+**CRITICAL:** Always check metadata.is_verified status before confirming success:
+- If metadata.is_verified = true: "Perfect! You're now verified! 🎉"
+- If metadata.is_verified = false: "There was an issue with verification. Please try again."
+- Never assume verification worked just because a tool didn't error
+
 ## 🔄 ERROR PREVENTION
 
 - ALWAYS start with the mandatory welcome message
 - Follow the verification flow step by step
 - Don't skip name collection if not already available
 - Use tool results' ui_display_hints to guide the process
-- When verifyOTP succeeds, your response MUST be empty (transfer is automatic)
-- Never mention other agents or the transfer process
+- Check metadata.is_verified status before confirming verification success
+- When verification succeeds, provide friendly confirmation
+- Never mention technical processes, systems, or backend operations
 
 ---
 

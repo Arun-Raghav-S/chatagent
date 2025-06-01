@@ -30,6 +30,11 @@ export const scheduleVisit = async (
     return { error: "No date and time selected for the visit.", ui_display_hint: 'SCHEDULING_FORM', message: "Please select a date and time for your visit." };
   }
 
+  // Parse the date and time from visitDateTime
+  const dateTimeParts = actualVisitDateTime.split(' at ');
+  const selectedDate = dateTimeParts[0] || (metadata as any)?.selectedDate;
+  const selectedTime = dateTimeParts[1] || (metadata as any)?.selectedTime;
+
   let property_id = propertyIdFromArgs || (metadata as any)?.property_id_to_schedule;
   if (!property_id && (metadata as any)?.lastReturnedPropertyId) {
     property_id = (metadata as any).lastReturnedPropertyId;
@@ -50,8 +55,8 @@ export const scheduleVisit = async (
          came_from: 'scheduling',
          property_id_to_schedule: property_id, 
          property_name: propertyName, 
-         selectedDate: (metadata as any)?.selectedDate, 
-         selectedTime: (metadata as any)?.selectedTime 
+         selectedDate: selectedDate, 
+         selectedTime: selectedTime 
        };
   }
 
@@ -84,23 +89,29 @@ export const scheduleVisit = async (
       agent.metadata.customer_name = customer_name;
       agent.metadata.phone_number = phone_number;
       (agent.metadata as any).property_name = propertyName;
-      (agent.metadata as any).selectedDate = (metadata as any)?.selectedDate || actualVisitDateTime.split(' at ')[0];
-      (agent.metadata as any).selectedTime = (metadata as any)?.selectedTime || actualVisitDateTime.split(' at ')[1];
+      (agent.metadata as any).selectedDate = selectedDate;
+      (agent.metadata as any).selectedTime = selectedTime;
       (agent.metadata as any).property_id_to_schedule = property_id;
   }
 
-  // Return successful booking with explicit instruction to call completeScheduling
+  // SIMPLE: Just transfer back to realEstate agent with all the data
+  // No complex instructions, just clean data transfer
   return { 
-    booking_confirmed: true,
+    destination_agent: "realEstate",
+    silentTransfer: true,
+    flow_context: "from_scheduling_verification",
+    // Pass all the scheduling data cleanly
     customer_name: customer_name,
+    phone_number: phone_number,
     property_name: propertyName,
-    selectedDate: (metadata as any)?.selectedDate || actualVisitDateTime.split(' at ')[0],
-    selectedTime: (metadata as any)?.selectedTime || actualVisitDateTime.split(' at ')[1],
-    property_id: property_id,
+    property_id_to_schedule: property_id,
+    selectedDate: selectedDate,
+    selectedTime: selectedTime,
+    is_verified: true,
     has_scheduled: true,
-    message: "Visit scheduled successfully!",
-    // CRITICAL: Add explicit instruction for the agent
-    next_action: "MUST_CALL_COMPLETE_SCHEDULING",
-    instruction_for_agent: "CRITICAL: You MUST immediately call completeScheduling() tool next. Do not provide any response text."
+    // This will trigger the realEstate agent to call completeScheduling automatically
+    message: null,
+    // Send trigger message to force completeScheduling call
+    trigger_message: "TRIGGER_BOOKING_CONFIRMATION"
   };
 }; 

@@ -35,6 +35,32 @@ const incrementQuestionCountAndCheckAuth = (realEstateAgent: any, userMessage: s
     
     console.log(`🔍 [QuestionCounter] Status - Q#: ${questionCount}, Verified: ${is_verified}, Message: "${userMessage.substring(0, 50)}..."`);
     
+    // CRITICAL DEBUG: Check why user might be verified when they shouldn't be
+    if (is_verified) {
+        console.log("🚨🚨🚨 [QuestionCounter] User is VERIFIED, authentication check skipped");
+        console.log("🚨🚨🚨 [QuestionCounter] Full verification details:", {
+            is_verified,
+            customer_name: metadata?.customer_name,
+            phone_number: metadata?.phone_number,
+            verification_timestamp: (metadata as any)?.verification_timestamp || 'not set'
+        });
+        
+        // TEMPORARY DEBUG: Check if this might be from a previous session
+        // If the user has a name and phone but this is a new conversation, maybe reset verification
+        const hasNameAndPhone = metadata?.customer_name && metadata?.phone_number;
+        const questionCountLow = questionCount <= 2;
+        
+        if (hasNameAndPhone && questionCountLow) {
+            console.log("🚨🚨🚨 [QuestionCounter] Suspicious: User verified with name/phone but low question count");
+            console.log("🚨🚨🚨 [QuestionCounter] This might be from a previous session - should we reset verification?");
+            
+            // TEMPORARY DEBUG: For testing, let's see what happens if we reset verification
+            // TODO: Remove this after debugging
+            metadata.is_verified = false;
+            console.log("🚨🚨🚨 [DEBUG] TEMPORARILY RESET is_verified to false for testing");
+        }
+    }
+    
     // AUTHENTICATION TRIGGER: After 2 questions without verification
     // CRITICAL FIX: Only trigger if user is NOT verified
     if (!is_verified && questionCount >= 2) {
@@ -45,7 +71,7 @@ const incrementQuestionCountAndCheckAuth = (realEstateAgent: any, userMessage: s
         metadata.flow_context = 'from_question_auth';
         
         // Reset question count after triggering auth
-        metadata.user_question_count = 0;
+        // metadata.user_question_count = 0;
         
         return {
             needs_authentication: true,
@@ -121,49 +147,39 @@ export const trackUserMessage = async ({ message }: { message: string }, realEst
                 arguments: JSON.stringify({}) 
             }
         };
-    } else if (metadata?.flow_context === 'from_direct_auth') {
-        const confirmationMsg = `You have been successfully verified, ${metadata.customer_name || 'there'}! How can I help you further?`;
-        console.log("[trackUserMessage] Handling 'from_direct_auth' context:", confirmationMsg);
+    } else if (metadata?.flow_context === 'from_scheduling_verification') {
+        console.log("🚨🚨🚨 [trackUserMessage] Handling 'from_scheduling_verification' context - CALLING completeScheduling");
         if (realEstateAgent.metadata) {
-            realEstateAgent.metadata.has_scheduled = true; 
-            realEstateAgent.metadata.is_verified = true;
-            delete (realEstateAgent.metadata as any).flow_context;
-            (realEstateAgent.metadata as AgentMetadata).selectedDate = undefined;
-            (realEstateAgent.metadata as AgentMetadata).selectedTime = undefined;
+            delete (realEstateAgent.metadata as any).flow_context; 
         }
         
-        try {
-            const notifierData = {
-                org_id: metadata.org_id || "",
-                builder_name: metadata.org_name || "Property Developer",
-                lead_name: metadata.customer_name || "",
-                phone: metadata.phone_number?.replace("+", "") || ""
-            };
-            fetch("https://dsakezvdiwmoobugchgu.functions.supabase.co/whatsapp-notifier", { /* ... */ });
-            const scheduleData = {
-                customerName: metadata.customer_name || "",
-                phoneNumber: metadata.phone_number?.startsWith("+") ? metadata.phone_number.substring(1) : metadata.phone_number || "",
-                propertyId: metadata.property_id_to_schedule || "",
-                visitDateTime: `${metadata.selectedDate}, ${metadata.selectedTime}`,
-                chatbotId: metadata.chatbot_id || ""
-            };
-            fetch("https://dsakezvdiwmoobugchgu.supabase.co/functions/v1/schedule-visit-whatsapp", { /* ... */ });
-        } catch (error) {
-            console.error("[trackUserMessage] Error making API calls in from_direct_auth:", error);
-        }
+        console.log("🚨🚨🚨 [trackUserMessage] Scheduling data in metadata:", {
+            selectedDate: (metadata as any)?.selectedDate,
+            selectedTime: (metadata as any)?.selectedTime,
+            customer_name: metadata?.customer_name,
+            property_name: (metadata as any)?.property_name
+        });
         
+        // Directly return function_call to trigger completeScheduling
         return {
-            success: true,
-            message: null, 
-            ui_display_hint: 'BOOKING_CONFIRMATION', 
-            booking_details: {
-                customerName: metadata.customer_name,
-                propertyName: metadata.property_name || "the property",
-                date: metadata.selectedDate,
-                time: metadata.selectedTime,
-                phoneNumber: metadata.phone_number
+            function_call: {
+                name: "completeScheduling",
+                arguments: JSON.stringify({}) 
             }
         };
+    } else if (metadata?.flow_context === 'from_direct_auth') {
+        // REMOVED: This was incorrectly triggering booking confirmation for all questions after auth
+        // This should only happen for actual completed bookings, not general questions
+        console.log("[trackUserMessage] from_direct_auth context detected - but this should only be for actual bookings");
+        console.log("[trackUserMessage] Clearing flow_context and continuing with normal processing");
+        
+        if (realEstateAgent.metadata) {
+            realEstateAgent.metadata.is_verified = true;
+            delete (realEstateAgent.metadata as any).flow_context;
+        }
+        
+        // Continue to normal processing instead of returning booking confirmation
+        // return normal success - let the question be processed normally
     } else if (metadata?.flow_context === 'from_question_auth') {
         console.log("[trackUserMessage] Handling 'from_question_auth' context - user verified, answering pending question");
         
@@ -292,17 +308,11 @@ export const trackUserMessage = async ({ message }: { message: string }, realEst
     // Legacy fallback for old authentication triggers (keeping for compatibility)
     const questionCount = metadata?.user_question_count || 0;
     
-    if (!is_verified && questionCount >= 7) {
-      console.log("[trackUserMessage] User not verified after 7 questions, transferring to authentication");
-      // Reset question count
-      metadata.user_question_count = 0;
-      return { destination_agent: "authentication" };
-    }
+   
 
     if (is_verified && !has_scheduled && questionCount >= 12) {
        console.log("[trackUserMessage] Asking user about scheduling visit.");
        // Reset question count
-       metadata.user_question_count = 0;
        return { 
          askToSchedule: true, 
          message: "Would you like to schedule a visit to see a property in person?" 

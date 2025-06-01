@@ -625,6 +625,10 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
         // Don't return here - let the message continue to be processed by the agent
         // The agent will receive this message and speak it, but it won't appear in the visible transcript
         // We'll just skip adding it to the transcript by not calling addTranscriptMessage
+      } else if (messageText === "TRIGGER_BOOKING_CONFIRMATION") {
+        console.log("[handleServerEvent] TRIGGER_BOOKING_CONFIRMATION detected - allowing agent processing but hiding from transcript");
+        // Don't return here - let the message continue to be processed by the agent
+        // The agent will receive this message and call completeScheduling, but it won't appear in the visible transcript
       } else {
         // For other trigger messages, completely filter them out
         return; // Don't process this event further
@@ -1165,7 +1169,26 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
              // For authentication agent, update instructions with current language
              try {
                  const { getAuthInstructions } = await import('@/agentConfigs/realEstate/authentication');
-                 instructions = getAuthInstructions(currentAgent.metadata);
+                 
+                 // CRITICAL: Preserve flow_context and related metadata from the current agent
+                 // This ensures the authentication agent gets the correct welcome message
+                 const extendedMetadata = currentAgent.metadata as ExtendedAgentMetadata;
+                 const metadataForInstructions = {
+                     ...currentAgent.metadata,
+                     // Make sure these critical fields are preserved
+                     flow_context: extendedMetadata?.flow_context,
+                     pending_question: extendedMetadata?.pending_question,
+                     came_from: (currentAgent.metadata as any)?.came_from,
+                 };
+                 
+                 console.log("🚨🚨🚨 [Update Session] Auth agent metadata for instructions:", {
+                     flow_context: metadataForInstructions.flow_context,
+                     pending_question: metadataForInstructions.pending_question,
+                     came_from: metadataForInstructions.came_from,
+                     customer_name: metadataForInstructions.customer_name
+                 });
+                 
+                 instructions = getAuthInstructions(metadataForInstructions);
                  console.log("[Update Session] Dynamic instructions applied for authentication agent with language:", selectedLanguage);
              } catch (e) {
                  console.error("[Update Session] Error loading auth agent for dynamic instructions:", e);
@@ -1886,13 +1909,13 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
   //     micMuted 
   // });
 
-  console.log("[Render] TimePick and UI state:", {
-    activeDisplayMode,
-    showTimeSlots,
-    hasSelectedProperty: !!selectedProperty,
-    isVerifying,
-    propertyId: selectedProperty?.id
-  });
+  // console.log("[Render] TimePick and UI state:", {
+  //   activeDisplayMode,
+  //   showTimeSlots,
+  //   hasSelectedProperty: !!selectedProperty,
+  //   isVerifying,
+  //   propertyId: selectedProperty?.id
+  // });
 
   // Add handleTimeSlotSelection function to handle slot selection
   const handleTimeSlotSelection = useCallback((date: string, time: string) => {
@@ -1927,6 +1950,9 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
       
       if (time) {
         selectionMessage = `Selected ${date} at ${time}.`; // Full date and time selection
+        
+        // The scheduling agent will automatically call scheduleVisit when it receives the time selection
+        // No need for additional confirmation messages that could cause race conditions
       } else {
         selectionMessage = `Selected ${date}.`; // Date-only selection
       }
