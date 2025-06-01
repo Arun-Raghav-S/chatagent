@@ -603,6 +603,45 @@ export function useHandleServerEvent({
                 } else {
                   console.error("🚨🚨🚨 [DIRECT CALL] completeScheduling tool not found on realEstate agent!");
                 }
+              } else if (newAgentConfig && newAgentConfig.name === "realEstate" && (fnResult.flow_context === "from_question_auth" || (newAgentPreparedMetadata as any).flow_context === "from_question_auth")) {
+                // Special handling for return to realEstate after authentication with pending question
+                console.log("[handleFunctionCall] realEstate agent transfer after authentication - sending pending question automatically");
+                
+                const pendingQuestion = fnResult.pending_question || (newAgentPreparedMetadata as any).pending_question;
+                
+                if (pendingQuestion) {
+                  console.log(`🚨🚨🚨 [AUTO PENDING] Sending pending question automatically: "${pendingQuestion}"`);
+                  
+                  // Clear the flow context and pending question from metadata to prevent loops
+                  if (newAgentConfig.metadata) {
+                    delete (newAgentConfig.metadata as any).flow_context;
+                    delete (newAgentConfig.metadata as any).pending_question;
+                    console.log("[handleFunctionCall] Cleared flow_context and pending_question from realEstate agent metadata");
+                  }
+                  
+                  // Send the pending question automatically
+                  setTimeout(() => {
+                    const pendingQuestionMessageId = generateSafeId();
+                    console.log(`🚨🚨🚨 [AUTO PENDING] Sending pending question as user message: "${pendingQuestion}"`);
+                    
+                    sendClientEvent({
+                      type: "conversation.item.create",
+                      item: {
+                        id: pendingQuestionMessageId,
+                        type: "message",
+                        role: "user",
+                        content: [{ type: "input_text", text: pendingQuestion }]
+                      }
+                    }, "(auto-pending question after authentication)");
+                    
+                    // Trigger response to the pending question
+                    setTimeout(() => {
+                      sendClientEvent({ type: "response.create" }, "(trigger response for pending question)");
+                    }, 100);
+                  }, 300); // Small delay to ensure transfer is complete
+                } else {
+                  console.warn("[handleFunctionCall] No pending question found after authentication transfer");
+                }
               }
             } else {
               // Only send non-silent transfers (should be rare or never used now)
@@ -856,6 +895,19 @@ export function useHandleServerEvent({
         if (role === "user" && text.startsWith('{Trigger msg: Say ')) {
           console.log(`[Transcript] Filtering SPEAK trigger from transcript: "${text}"`);
           break; // Don't add SPEAK triggers to the visible transcript
+        }
+
+        // Filter out OTP verification messages from transcript
+        if (role === "user" && (
+          text.toLowerCase().includes('verification code') ||
+          text.toLowerCase().includes('my code is') ||
+          text.toLowerCase().includes('otp is') ||
+          /verification code is \d{4,6}/.test(text.toLowerCase()) ||
+          /my verification code is \d{4,6}/.test(text.toLowerCase()) ||
+          /\b\d{4,6}\b/.test(text) && selectedAgentName === 'authentication'
+        )) {
+          console.log(`[Transcript] Filtering OTP verification message from transcript: "${text}"`);
+          break; // Don't add OTP messages to the visible transcript
         }
 
         if(isTransferringAgentRef.current && role==="assistant") {

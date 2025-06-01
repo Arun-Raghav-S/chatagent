@@ -1558,10 +1558,9 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
                                                     !isReturningToRealEstateAfterQuestionAuth &&
                                                     isInitialAgentLoad;
                        
-                       // For the question auth flow, send the pending question instead of "hi"
-                       const shouldSendPendingQuestion = isReturningToRealEstateAfterQuestionAuth && 
-                                                         (agentMetadata as ExtendedAgentMetadata)?.pending_question;
-                       
+                       const shouldSendPendingQuestion = false; // DISABLED: Now handled automatically in useHandleServerEvent
+                       // OLD: const shouldSendPendingQuestion = isReturningToRealEstateAfterQuestionAuth;
+
                        console.log(`[Effect] Updating session. Agent: ${selectedAgentName}, Auto-triggers: ${agentAutoTriggersFirstAction}, ReturningPostVerification: ${isReturningToRealEstateAfterVerification}, ReturningPostQuestionAuth: ${isReturningToRealEstateAfterQuestionAuth}, IsInitialLoad: ${isInitialAgentLoad}, Sending simulated 'hi': ${shouldSendSimulatedHi}, Sending pending question: ${shouldSendPendingQuestion}`);
                        
                        if (shouldSendPendingQuestion) {
