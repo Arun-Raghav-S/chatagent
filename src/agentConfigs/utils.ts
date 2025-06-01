@@ -64,7 +64,34 @@ ${availableAgentsList}
       }
       if (!agentDef.toolLogic[transferAgentTool.name]) {
           agentDef.toolLogic[transferAgentTool.name] = async (args: { destination_agent: string }) => {
-               console.log(`[${agentDef.name}.transferAgents] Tool called. Transfer to ${args.destination_agent} initiated.`);
+               const metadata = agentDef.metadata as any;
+               const isVerified = metadata?.is_verified === true;
+               
+               console.log(`[${agentDef.name}.transferAgents] Tool called with args:`, args);
+               console.log(`[${agentDef.name}.transferAgents] Current user verification status: ${isVerified ? 'VERIFIED ✅' : 'NOT VERIFIED ❌'}`);
+               console.log(`[${agentDef.name}.transferAgents] Full metadata:`, {
+                   is_verified: metadata?.is_verified,
+                   customer_name: metadata?.customer_name,
+                   user_question_count: metadata?.user_question_count,
+                   flow_context: metadata?.flow_context
+               });
+               
+               // CRITICAL FIX: Prevent transferring to authentication if user is already verified
+               if (args.destination_agent === "authentication") {
+                   if (isVerified) {
+                       console.log(`[${agentDef.name}.transferAgents] 🚫 BLOCKED: User is already verified. Cannot transfer to authentication.`);
+                       console.log(`[${agentDef.name}.transferAgents] 🚫 This indicates the agent made an incorrect decision - it should NOT call transferAgents when user is verified.`);
+                       return { 
+                           success: false, 
+                           error: "User is already verified. Transfer to authentication blocked.",
+                           message: "You are already verified. How can I help you with property information?"
+                       };
+                   } else {
+                       console.log(`[${agentDef.name}.transferAgents] ✅ Allowing transfer to authentication - user is not verified.`);
+                   }
+               }
+               
+               console.log(`[${agentDef.name}.transferAgents] ✅ Transfer to ${args.destination_agent} initiated.`);
                // Signal transfer intent; actual transfer handled by hook
                return { destination_agent: args.destination_agent, success: true, message: "Transfer initiated." };
            };

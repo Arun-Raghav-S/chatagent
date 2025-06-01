@@ -1,9 +1,5 @@
 import { AgentConfig, AgentMetadata } from "@/types/types";
 
-// Required Environment Variables: NEXT_PUBLIC_SCHEDULE_VISIT_FUNC_URL, NEXT_PUBLIC_SCHEDULE_VISIT_FUNC_KEY
-const scheduleVisitFuncUrl = process.env.NEXT_PUBLIC_SCHEDULE_VISIT_FUNC_URL || "https://dsakezvdiwmoobugchgu.supabase.co/functions/v1/schedule-visit-whatsapp";
-const scheduleVisitFuncKey = process.env.NEXT_PUBLIC_SCHEDULE_VISIT_FUNC_KEY; // Needs to be set!
-
 export const scheduleVisit = async (
   { visitDateTime, property_id: propertyIdFromArgs, customer_name: nameFromArgs, phone_number: phoneFromArgs }: { 
     visitDateTime: string; 
@@ -80,52 +76,31 @@ export const scheduleVisit = async (
     return { error: "Missing required session information.", ui_display_hint: 'CHAT', message: "A session information error is preventing scheduling. Please try again." };
   }
 
-  if (!scheduleVisitFuncKey) {
-      console.error("[scheduleVisit] Missing NEXT_PUBLIC_SCHEDULE_VISIT_FUNC_KEY environment variable.");
-      return { error: "Server configuration error prevents scheduling.", ui_display_hint: 'CHAT', message: "A server configuration error is preventing scheduling. Please contact support." };
+  console.log("[scheduleVisit] All details verified, confirming booking locally");
+      
+  // Update agent metadata to mark scheduling as complete
+  if (agent.metadata) {
+      agent.metadata.has_scheduled = true;
+      agent.metadata.customer_name = customer_name;
+      agent.metadata.phone_number = phone_number;
+      (agent.metadata as any).property_name = propertyName;
+      (agent.metadata as any).selectedDate = (metadata as any)?.selectedDate || actualVisitDateTime.split(' at ')[0];
+      (agent.metadata as any).selectedTime = (metadata as any)?.selectedTime || actualVisitDateTime.split(' at ')[1];
+      (agent.metadata as any).property_id_to_schedule = property_id;
   }
 
-  try {
-    const response = await fetch(scheduleVisitFuncUrl, {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${scheduleVisitFuncKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ customerName: customer_name, phoneNumber: phone_number, propertyId: property_id, visitDateTime: actualVisitDateTime, chatbotId: chatbot_id, sessionId: session_id })
-    });
-    const result = await response.json();
-
-    if (!response.ok) {
-      console.error("[scheduleVisit] Schedule API error:", result?.error || response.statusText);
-      return { error: result?.error || "Failed to schedule the visit via the API.", ui_display_hint: 'SCHEDULING_FORM', message: `I couldn't confirm the booking: ${result?.error || "Please try again."}` };
-    }
-
-    console.log("[scheduleVisit] Schedule visit successful via API:", result);
-
-    if (agent.metadata) {
-        agent.metadata.has_scheduled = true;
-        agent.metadata.customer_name = customer_name; // Ensure customer_name is in metadata
-        agent.metadata.phone_number = phone_number; // Ensure phone_number is in metadata
-        (agent.metadata as any).property_name = propertyName; // Ensure property_name
-        (agent.metadata as any).selectedDate = (metadata as any)?.selectedDate || actualVisitDateTime.split(' at ')[0]; // Ensure date
-        (agent.metadata as any).selectedTime = (metadata as any)?.selectedTime || actualVisitDateTime.split(' at ')[1]; // Ensure time
-         (agent.metadata as any).property_id_to_schedule = property_id; // Ensure property_id
-    }
-
-    return { 
-      booking_confirmed: true,
-      // message: null, // No direct message, realEstateAgent will confirm
-      // ui_display_hint: 'CHAT', // No specific UI hint, will go to completeScheduling next
-      // All necessary data is now in scheduleMeetingAgent.metadata for completeScheduling to pick up
-      // Ensure all required fields for the confirmation message are present in the metadata for completeScheduling
-      customer_name: customer_name,
-      property_name: propertyName,
-      selectedDate: (metadata as any)?.selectedDate || actualVisitDateTime.split(' at ')[0],
-      selectedTime: (metadata as any)?.selectedTime || actualVisitDateTime.split(' at ')[1],
-      property_id: property_id,
-      has_scheduled: true
-    }; // Agent will call completeScheduling next as per instructions
-
-  } catch (error: any) {
-     console.error("[scheduleVisit] Exception calling schedule API:", error);
-     return { error: `Failed to schedule visit due to an exception: ${error.message}`, ui_display_hint: 'SCHEDULING_FORM', message: "An unexpected error occurred while trying to book your visit. Please try again." };
-  }
+  // Return successful booking with explicit instruction to call completeScheduling
+  return { 
+    booking_confirmed: true,
+    customer_name: customer_name,
+    property_name: propertyName,
+    selectedDate: (metadata as any)?.selectedDate || actualVisitDateTime.split(' at ')[0],
+    selectedTime: (metadata as any)?.selectedTime || actualVisitDateTime.split(' at ')[1],
+    property_id: property_id,
+    has_scheduled: true,
+    message: "Visit scheduled successfully!",
+    // CRITICAL: Add explicit instruction for the agent
+    next_action: "MUST_CALL_COMPLETE_SCHEDULING",
+    instruction_for_agent: "CRITICAL: You MUST immediately call completeScheduling() tool next. Do not provide any response text."
+  };
 }; 

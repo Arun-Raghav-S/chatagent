@@ -30,13 +30,14 @@ const incrementQuestionCountAndCheckAuth = (realEstateAgent: any, userMessage: s
     }
     
     // Check if authentication is needed
-    const is_verified = metadata?.is_verified ?? false;
+    let is_verified = metadata?.is_verified ?? false;
     const questionCount = metadata.user_question_count;
     
     console.log(`🔍 [QuestionCounter] Status - Q#: ${questionCount}, Verified: ${is_verified}, Message: "${userMessage.substring(0, 50)}..."`);
     
     // AUTHENTICATION TRIGGER: After 2 questions without verification
-    if (!is_verified && questionCount >= 4) {
+    // CRITICAL FIX: Only trigger if user is NOT verified
+    if (!is_verified && questionCount >= 2) {
         console.log("[QuestionCounter] 🚨 AUTHENTICATION REQUIRED - User not verified after 2+ questions");
         
         // Store the current question for later
@@ -73,6 +74,16 @@ export const trackUserMessage = async ({ message }: { message: string }, realEst
         return { 
             success: true, 
             is_trigger_message: true, // Let LLM know it's a trigger
+        };
+    }
+    
+    // CRITICAL: Handle pending scheduling question from useHandleServerEvent
+    if (message === 'initiateScheduling: schedule visit' || message.includes('initiateScheduling')) {
+        console.log("🔍 [trackUserMessage] Detected pending scheduling question - triggering scheduling flow");
+        return {
+            success: true,
+            trigger_scheduling: true,
+            message: "I'll help you schedule a visit. Let me get the available time slots for you."
         };
     }
     

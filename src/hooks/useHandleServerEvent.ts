@@ -184,8 +184,33 @@ export function useHandleServerEvent({
       if (typeof toolFunction === 'function') {
         // Tool logic exists, proceed to call it
         console.log(`[handleFunctionCall] Executing tool logic for "${functionCallParams.name}" on agent "${selectedAgentName}"`);
-        const fnResult = await toolFunction(args, transcriptItems || []);
+        let fnResult = await toolFunction(args, transcriptItems || []);
         console.log(`[handleFunctionCall] Tool "${functionCallParams.name}" result:`, fnResult);
+
+        // Special handling for trigger_scheduling response from trackUserMessage
+        if (fnResult && fnResult.trigger_scheduling === true) {
+          console.log("[handleFunctionCall] Received trigger_scheduling - calling initiateScheduling tool");
+          
+          // Get the current agent and call initiateScheduling
+          const currentAgent = selectedAgentConfigSet?.find(a => a.name === selectedAgentName);
+          const initiateSchedulingTool = currentAgent?.toolLogic?.initiateScheduling;
+          
+          if (typeof initiateSchedulingTool === 'function') {
+            try {
+              const schedulingResult = await initiateSchedulingTool({}, transcriptItems || []);
+              console.log("[handleFunctionCall] initiateScheduling result:", schedulingResult);
+              
+              // Process the scheduling result like any other tool result
+              if (schedulingResult && schedulingResult.destination_agent) {
+                // This should transfer to scheduleMeeting agent
+                // Process the transfer logic below
+                fnResult = schedulingResult; // Replace fnResult with scheduling result
+              }
+            } catch (error) {
+              console.error("[handleFunctionCall] Error calling initiateScheduling:", error);
+            }
+          }
+        }
 
         // --- Centralized UI Update Logic based on fnResult ---
         if (fnResult && fnResult.ui_display_hint) {
@@ -315,7 +340,25 @@ export function useHandleServerEvent({
         // --- End of Centralized UI Update Logic ---
 
         if (fnResult && fnResult.destination_agent) {
-          // ... (agent transfer logic - ensure it correctly resets or sets UI for the new agent context) ...
+          // Check if the transfer was blocked (e.g., due to user already being verified)
+          if (fnResult.success === false) {
+            console.log("[handleFunctionCall] Transfer was blocked:", fnResult.error || "Unknown reason");
+            
+            // Send the blocked transfer result as function output
+            sendClientEvent({
+              type: "conversation.item.create",
+              item: {
+                type: "function_call_output",
+                call_id: functionCallParams.call_id,
+                output: JSON.stringify(fnResult),
+              },
+            });
+            sendClientEvent({ type: "response.create" });
+            return; // Don't proceed with transfer
+          }
+          
+          // ... (rest of existing agent transfer logic) ...
+
           // The new agent, upon activation, might send an initial message/tool call that sets its own UI mode.
           // For example, scheduleMeetingAgent immediately calls getAvailableSlots.
           // Consider if setActiveDisplayMode('CHAT') is needed here before transfer, or if new agent handles it.
@@ -621,23 +664,33 @@ export function useHandleServerEvent({
                   
                   // Send the pending question automatically
                   setTimeout(() => {
-                    const pendingQuestionMessageId = generateSafeId();
-                    console.log(`🚨🚨🚨 [AUTO PENDING] Sending pending question as user message: "${pendingQuestion}"`);
+                    // Cancel any active response first to avoid race conditions
+                    if (hasActiveResponseRef.current) {
+                      console.log("[handleFunctionCall] Cancelling active response before sending pending question");
+                      sendClientEvent({ type: "response.cancel" }, "(cancelling before pending question)");
+                      hasActiveResponseRef.current = false;
+                    }
                     
-                    sendClientEvent({
-                      type: "conversation.item.create",
-                      item: {
-                        id: pendingQuestionMessageId,
-                        type: "message",
-                        role: "user",
-                        content: [{ type: "input_text", text: pendingQuestion }]
-                      }
-                    }, "(auto-pending question after authentication)");
-                    
-                    // Trigger response to the pending question
+                    // Wait a bit for cancellation to process
                     setTimeout(() => {
-                      sendClientEvent({ type: "response.create" }, "(trigger response for pending question)");
-                    }, 100);
+                      const pendingQuestionMessageId = generateSafeId();
+                      console.log(`🚨🚨🚨 [AUTO PENDING] Sending pending question as user message: "${pendingQuestion}"`);
+                      
+                      sendClientEvent({
+                        type: "conversation.item.create",
+                        item: {
+                          id: pendingQuestionMessageId,
+                          type: "message",
+                          role: "user",
+                          content: [{ type: "input_text", text: pendingQuestion }]
+                        }
+                      }, "(auto-pending question after authentication)");
+                      
+                      // Trigger response to the pending question
+                      setTimeout(() => {
+                        sendClientEvent({ type: "response.create" }, "(trigger response for pending question)");
+                      }, 100);
+                    }, 200);
                   }, 300); // Small delay to ensure transfer is complete
                 } else {
                   console.warn("[handleFunctionCall] No pending question found after authentication transfer");
@@ -765,6 +818,79 @@ export function useHandleServerEvent({
           }, 3000); // Wait 3 seconds after booking confirmation
           
           return; // Skip the regular function handling below
+        }
+
+        // Special handling for scheduleVisit function result - ADD AUTOMATIC FALLBACK
+        if (fnResult && functionCallParams.name === "scheduleVisit") {
+          console.log("[handleFunctionCall] scheduleVisit result processed:", fnResult);
+          
+          // CRITICAL FALLBACK: If scheduleVisit succeeds but agent is scheduleMeeting, 
+          // we need to ensure completeScheduling gets called
+          if (fnResult.booking_confirmed === true && selectedAgentName === "scheduleMeeting") {
+            console.log("🚨 [CRITICAL FALLBACK] scheduleVisit succeeded for scheduleMeeting agent");
+            console.log("🚨 [CRITICAL FALLBACK] Will monitor next response - if no completeScheduling called, will auto-trigger");
+            
+            // Set a flag to monitor the next response
+            (window as any).__scheduleVisitSucceeded = true;
+            (window as any).__scheduleVisitSuccessData = fnResult;
+            
+            // Set a timer to automatically call completeScheduling if the agent doesn't
+            setTimeout(async () => {
+              if ((window as any).__scheduleVisitSucceeded) {
+                console.log("🚨🚨🚨 [EMERGENCY FALLBACK] scheduleMeeting agent failed to call completeScheduling!");
+                console.log("🚨🚨🚨 [EMERGENCY FALLBACK] Auto-calling completeScheduling now...");
+                
+                // Clear the flag
+                (window as any).__scheduleVisitSucceeded = false;
+                
+                // Get the scheduling agent and call completeScheduling
+                const schedulingAgent = selectedAgentConfigSet?.find(a => a.name === "scheduleMeeting");
+                const completeSchedulingTool = schedulingAgent?.toolLogic?.completeScheduling;
+                
+                if (typeof completeSchedulingTool === 'function') {
+                  try {
+                    const completionResult = await completeSchedulingTool({}, transcriptItems || []);
+                    console.log("🚨 [EMERGENCY FALLBACK] completeScheduling called successfully:", completionResult);
+                    
+                    // Process the completion result manually
+                    if (completionResult) {
+                      // Handle agent transfer if specified
+                      if (completionResult.destination_agent) {
+                        console.log(`🚨 [EMERGENCY FALLBACK] Transferring to agent: ${completionResult.destination_agent}`);
+                        setSelectedAgentName(completionResult.destination_agent);
+                      }
+                      
+                      // Handle booking details and UI hints
+                      if (completionResult.booking_details) {
+                        console.log("🚨 [EMERGENCY FALLBACK] Setting booking details:", completionResult.booking_details);
+                        setBookingDetails(completionResult.booking_details);
+                      }
+                      
+                      if (completionResult.ui_display_hint === 'BOOKING_CONFIRMATION') {
+                        console.log("🚨 [EMERGENCY FALLBACK] Setting display mode to BOOKING_CONFIRMATION");
+                        setActiveDisplayMode('BOOKING_CONFIRMATION');
+                      }
+                      
+                      // Add confirmation message
+                      if (completionResult.message) {
+                        addTranscriptMessage(generateSafeId(), 'assistant', completionResult.message);
+                      }
+                    }
+                  } catch (error) {
+                    console.error("🚨 [EMERGENCY FALLBACK] Error calling completeScheduling:", error);
+                  }
+                } else {
+                  console.error("🚨 [EMERGENCY FALLBACK] completeScheduling tool not found!");
+                }
+              }
+            }, 2000); // Wait 2 seconds for the agent to call completeScheduling
+          }
+        }
+
+        // Check if this was a completeScheduling call - clear the fallback flag
+        if (functionCallParams.name === "completeScheduling" && (window as any).__scheduleVisitSucceeded) {
+          console.log("✅ [FALLBACK CLEARED] Agent successfully called completeScheduling");
+          (window as any).__scheduleVisitSucceeded = false;
         }
 
         // Send regular function output for other non-silent, non-transferring tools
@@ -1140,89 +1266,15 @@ export function useHandleServerEvent({
         const currentAgentNameInResponse = selectedAgentName; // Capture at event time
         console.log(`[Server Event Hook] Response done. Agent: ${currentAgentNameInResponse}. Transferring flag: ${isTransferringAgentRef.current}, Target: ${agentBeingTransferredToRef.current}`);
 
-        if (isTransferringAgentRef.current) {
-          if (currentAgentNameInResponse === agentBeingTransferredToRef.current) {
-            // This is the NEW agent's first response. It's now taking over.
-            console.log(`[Server Event Hook] New agent ${currentAgentNameInResponse} completing its first response. Transfer flag will be cleared. Tools will be processed.`);
-            isTransferringAgentRef.current = false;
-            agentBeingTransferredToRef.current = null;
-            // Fall through to process tools for the new agent
-          } else {
-            // This is the OLD agent's response completing AFTER a transfer was decided.
-            console.log(`[Server Event Hook] Old agent ${currentAgentNameInResponse} response done after transfer to ${agentBeingTransferredToRef.current} initiated. Stopping tool processing for old agent.`);
-            isTransferringAgentRef.current = false; 
-            agentBeingTransferredToRef.current = null;
-            break; // Skip tool processing for the old agent
-          }
-        }
-
-        // Tool processing logic (will run for new agent on its first response.done, or normally for non-transfer scenarios)
-        // If not transferring, process tool calls for the CURRENT agent.
-        console.log(`[Server Event Hook] Processing tools for agent ${currentAgentNameInResponse} (Transfer flag is now ${isTransferringAgentRef.current})`);
+        // Add a small delay before processing tools to avoid race conditions
+        const delayBeforeProcessing = isTransferringAgentRef.current ? 100 : 0;
         
-        // 🔍 ADD DETAILED LOGGING FOR FUNCTION CALLS
-        console.log(`🔍 [Server Event Hook] Response output structure:`, serverEvent.response?.output);
-        
-        if (serverEvent.response?.output) {
-          console.log(`🔍 [Server Event Hook] Found ${serverEvent.response.output.length} output items to process`);
-          
-          let functionCallCount = 0;
-          serverEvent.response.output.forEach((outputItem, index) => {
-            console.log(`🔍 [Server Event Hook] Output item ${index}:`, {
-              type: outputItem.type,
-              name: (outputItem as any).name,
-              hasArguments: !!(outputItem as any).arguments,
-              content: outputItem.type === 'message' ? (outputItem as any).content : 'N/A'
-            });
-            
-            // SPECIAL LOGGING FOR MESSAGE CONTENT WHEN WE EXPECT FUNCTION CALLS
-            if (outputItem.type === 'message') {
-              const messageContent = (outputItem as any).content;
-              console.log(`🔍 [Server Event Hook] Message content:`, messageContent);
-              
-              // Check if this looks like a response to TRIGGER_BOOKING_CONFIRMATION
-              if (messageContent && Array.isArray(messageContent) && messageContent.length > 0) {
-                const textContent = messageContent[0]?.text || '';
-                console.log(`🔍 [Server Event Hook] Text content: "${textContent}"`);
-                
-                // Check if this contains booking confirmation language
-                if (textContent.toLowerCase().includes('great') || 
-                    textContent.toLowerCase().includes('scheduled') || 
-                    textContent.toLowerCase().includes('visit') ||
-                    textContent.toLowerCase().includes('confirmation')) {
-                  console.log(`🚨🚨🚨 [Server Event Hook] DETECTED BOOKING CONFIRMATION TEXT! Agent should have called completeScheduling instead!`);
-                  console.log(`🚨🚨🚨 [Server Event Hook] Agent text: "${textContent}"`);
-                }
-              }
-            }
-            
-            if (outputItem.type === "function_call" && outputItem.name && outputItem.arguments) {
-              functionCallCount++;
-              console.log(`🔍 [Server Event Hook] Processing function call #${functionCallCount}: ${outputItem.name}`);
-              
-              // SPECIAL LOGGING FOR COMPLETETSCHEDULING
-              if (outputItem.name === 'completeScheduling') {
-                console.log(`🚨🚨🚨 [Server Event Hook] FOUND completeScheduling call! This should handle TRIGGER_BOOKING_CONFIRMATION`);
-              }
-              
-              // This handleFunctionCall will execute for the selectedAgentName.
-              // If a transfer previously occurred and setSelectedAgentName was called, this should be the NEW agent.
-              handleFunctionCall({
-                name: outputItem.name,
-                call_id: outputItem.call_id,
-                arguments: outputItem.arguments,
-              });
-            }
-          });
-          
-          console.log(`🔍 [Server Event Hook] Total function calls processed: ${functionCallCount}`);
-          
-          if (functionCallCount === 0) {
-            console.log(`🚨🚨🚨 [Server Event Hook] NO FUNCTION CALLS FOUND! Agent ${currentAgentNameInResponse} completed response without calling any tools`);
-            console.log(`🚨🚨🚨 [Server Event Hook] This might indicate the agent is not following instructions for TRIGGER_BOOKING_CONFIRMATION`);
-          }
+        if (delayBeforeProcessing > 0) {
+          setTimeout(() => {
+            processResponseOutputs(serverEvent, currentAgentNameInResponse);
+          }, delayBeforeProcessing);
         } else {
-          console.log(`🚨🚨🚨 [Server Event Hook] NO OUTPUT FOUND in response! This is unusual.`);
+          processResponseOutputs(serverEvent, currentAgentNameInResponse);
         }
         break;
       }
@@ -1307,6 +1359,108 @@ export function useHandleServerEvent({
       default:
         //  console.log(`[Server Event Hook] Unhandled event type: ${serverEvent.type}`);
         break;
+    }
+  };
+
+  // Extract the response output processing logic into a separate function
+  const processResponseOutputs = (serverEvent: any, currentAgentNameInResponse: string) => {
+    if (isTransferringAgentRef.current) {
+      if (currentAgentNameInResponse === agentBeingTransferredToRef.current) {
+        // This is the NEW agent's first response. It's now taking over.
+        console.log(`[Server Event Hook] New agent ${currentAgentNameInResponse} completing its first response. Transfer flag will be cleared. Tools will be processed.`);
+        isTransferringAgentRef.current = false;
+        agentBeingTransferredToRef.current = null;
+        // Fall through to process tools for the new agent
+      } else {
+        // This is the OLD agent's response completing AFTER a transfer was decided.
+        console.log(`[Server Event Hook] Old agent ${currentAgentNameInResponse} response done after transfer to ${agentBeingTransferredToRef.current} initiated. Stopping tool processing for old agent.`);
+        isTransferringAgentRef.current = false; 
+        agentBeingTransferredToRef.current = null;
+        return; // Skip tool processing for the old agent
+      }
+    }
+
+    // Tool processing logic (will run for new agent on its first response.done, or normally for non-transfer scenarios)
+    // If not transferring, process tool calls for the CURRENT agent.
+    console.log(`[Server Event Hook] Processing tools for agent ${currentAgentNameInResponse} (Transfer flag is now ${isTransferringAgentRef.current})`);
+    
+    // 🔍 ADD DETAILED LOGGING FOR FUNCTION CALLS
+    console.log(`🔍 [Server Event Hook] Response output structure:`, serverEvent.response?.output);
+    
+    if (serverEvent.response?.output) {
+      console.log(`🔍 [Server Event Hook] Found ${serverEvent.response.output.length} output items to process`);
+      
+      let functionCallCount = 0;
+      serverEvent.response.output.forEach((outputItem: any, index: number) => {
+        console.log(`🔍 [Server Event Hook] Output item ${index}:`, {
+          type: outputItem.type,
+          name: (outputItem as any).name,
+          hasArguments: !!(outputItem as any).arguments,
+          content: outputItem.type === 'message' ? (outputItem as any).content : 'N/A'
+        });
+        
+        // SPECIAL LOGGING FOR MESSAGE CONTENT WHEN WE EXPECT FUNCTION CALLS
+        if (outputItem.type === 'message') {
+          const messageContent = (outputItem as any).content;
+          console.log(`🔍 [Server Event Hook] Message content:`, messageContent);
+          
+          // Check if this looks like a response to TRIGGER_BOOKING_CONFIRMATION
+          if (messageContent && Array.isArray(messageContent) && messageContent.length > 0) {
+            const textContent = messageContent[0]?.text || '';
+            console.log(`🔍 [Server Event Hook] Text content: "${textContent}"`);
+            
+            // Check if this contains booking confirmation language
+            if (textContent.toLowerCase().includes('great') || 
+                textContent.toLowerCase().includes('scheduled') || 
+                textContent.toLowerCase().includes('visit') ||
+                textContent.toLowerCase().includes('confirmation')) {
+              console.log(`🚨🚨🚨 [Server Event Hook] DETECTED BOOKING CONFIRMATION TEXT! Agent should have called completeScheduling instead!`);
+              console.log(`🚨🚨🚨 [Server Event Hook] Agent text: "${textContent}"`);
+            }
+          }
+        }
+        
+        if (outputItem.type === "function_call" && outputItem.name && outputItem.arguments) {
+          functionCallCount++;
+          console.log(`🔍 [Server Event Hook] Processing function call #${functionCallCount}: ${outputItem.name}`);
+          
+          // SPECIAL LOGGING FOR COMPLETETSCHEDULING
+          if (outputItem.name === 'completeScheduling') {
+            console.log(`🚨🚨🚨 [Server Event Hook] FOUND completeScheduling call! This should handle TRIGGER_BOOKING_CONFIRMATION`);
+          }
+          
+          // Add delay before processing function calls to prevent race conditions
+          if (hasActiveResponseRef.current) {
+            console.log(`🔍 [Server Event Hook] Delaying function call processing due to active response`);
+            setTimeout(() => {
+              if (!hasActiveResponseRef.current) {
+                handleFunctionCall({
+                  name: outputItem.name,
+                  call_id: outputItem.call_id,
+                  arguments: outputItem.arguments,
+                });
+              }
+            }, 150);
+          } else {
+            // This handleFunctionCall will execute for the selectedAgentName.
+            // If a transfer previously occurred and setSelectedAgentName was called, this should be the NEW agent.
+            handleFunctionCall({
+              name: outputItem.name,
+              call_id: outputItem.call_id,
+              arguments: outputItem.arguments,
+            });
+          }
+        }
+      });
+      
+      console.log(`🔍 [Server Event Hook] Total function calls processed: ${functionCallCount}`);
+      
+      if (functionCallCount === 0) {
+        console.log(`🚨🚨🚨 [Server Event Hook] NO FUNCTION CALLS FOUND! Agent ${currentAgentNameInResponse} completed response without calling any tools`);
+        console.log(`🚨🚨🚨 [Server Event Hook] This might indicate the agent is not following instructions for TRIGGER_BOOKING_CONFIRMATION`);
+      }
+    } else {
+      console.log(`🚨🚨🚨 [Server Event Hook] NO OUTPUT FOUND in response! This is unusual.`);
     }
   };
 

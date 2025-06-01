@@ -1625,12 +1625,21 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
   const previousAgentNameRef = useRef<string | null>(null);
   useEffect(() => {
       if (selectedAgentName !== previousAgentNameRef.current && previousAgentNameRef.current !== null) {
-          console.log(`[Effect] Agent changed from ${previousAgentNameRef.current} to ${selectedAgentName}. Resetting setup flag.`);
-          initialSessionSetupDoneRef.current = false;
-          // The main effect above will then run the setup for the new agent.
+          const hasFlowContext = !!(agentMetadata as ExtendedAgentMetadata)?.flow_context;
+          const isReturningFromAuth = previousAgentNameRef.current === 'authentication' && selectedAgentName === 'realEstate';
+          const isFromQuestionAuth = (agentMetadata as ExtendedAgentMetadata)?.flow_context === 'from_question_auth';
+          
+          // Don't reset setup flag when returning from authentication with a pending question
+          if (isReturningFromAuth && isFromQuestionAuth) {
+              console.log(`[Effect] Agent changed from ${previousAgentNameRef.current} to ${selectedAgentName}. NOT resetting setup flag due to pending question flow.`);
+          } else {
+              console.log(`[Effect] Agent changed from ${previousAgentNameRef.current} to ${selectedAgentName}. Resetting setup flag.`);
+              initialSessionSetupDoneRef.current = false;
+              // The main effect above will then run the setup for the new agent.
+          }
       }
       previousAgentNameRef.current = selectedAgentName;
-  }, [selectedAgentName]);
+  }, [selectedAgentName, agentMetadata]);
 
   // Effect to initialize properties when connected and metadata is available
   useEffect(() => {
