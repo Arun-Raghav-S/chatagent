@@ -1,8 +1,30 @@
 import { TranscriptItem } from "@/types/types";
+import { incrementQuestionCountAndCheckAuth } from './trackUserMessage';
+
+interface PropertyImage {
+  url?: string;
+  alt?: string;
+  description?: string;
+}
 
 export const getPropertyImages = async ({ property_name, query }: { property_name?: string; query?: string }, realEstateAgent: any, transcript: TranscriptItem[] = []) => {
-    console.log(`[getPropertyImages] Fetching images for property: ${property_name || 'active project'}`);
+    console.log(`[getPropertyImages] Fetching images for property: ${property_name || 'active property'}, query: ${query || 'none'}`);
     
+    // CRITICAL: Check authentication before processing user request
+    const authCheck = incrementQuestionCountAndCheckAuth(realEstateAgent, `getPropertyImages: ${property_name || query || 'property images'}`);
+    
+    if (authCheck.needs_authentication) {
+        console.log("[getPropertyImages] 🚨 Authentication required - transferring to authentication agent");
+        return {
+            destination_agent: authCheck.destination_agent,
+            flow_context: authCheck.flow_context,
+            came_from: authCheck.came_from,
+            pending_question: authCheck.pending_question,
+            message: null,
+            silentTransfer: authCheck.silentTransfer
+        };
+    }
+
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
     const toolsEdgeFunctionUrl = process.env.NEXT_PUBLIC_TOOLS_EDGE_FUNCTION_URL || "https://dashboard.propzing.in/functions/v1/realtime_tools";
     

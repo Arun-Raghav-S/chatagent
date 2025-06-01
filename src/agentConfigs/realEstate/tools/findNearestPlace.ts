@@ -1,8 +1,24 @@
 import { TranscriptItem } from "@/types/types";
+import { incrementQuestionCountAndCheckAuth } from './trackUserMessage';
 
 export const findNearestPlace = async ({ query, reference_property }: { query: string; reference_property: string }, realEstateAgent: any, transcript: TranscriptItem[] = []) => {
-    console.log(`[findNearestPlace] Finding "${query}" near property "${reference_property}"`);
+    console.log(`[findNearestPlace] Finding nearest place: "${query}" from property "${reference_property}"`);
     
+    // CRITICAL: Check authentication before processing user request
+    const authCheck = incrementQuestionCountAndCheckAuth(realEstateAgent, `findNearestPlace: ${query} near ${reference_property}`);
+    
+    if (authCheck.needs_authentication) {
+        console.log("[findNearestPlace] 🚨 Authentication required - transferring to authentication agent");
+        return {
+            destination_agent: authCheck.destination_agent,
+            flow_context: authCheck.flow_context,
+            came_from: authCheck.came_from,
+            pending_question: authCheck.pending_question,
+            message: null,
+            silentTransfer: authCheck.silentTransfer
+        };
+    }
+
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
     const toolsEdgeFunctionUrl = process.env.NEXT_PUBLIC_TOOLS_EDGE_FUNCTION_URL || "https://dashboard.propzing.in/functions/v1/realtime_tools";
     

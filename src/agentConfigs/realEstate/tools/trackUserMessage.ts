@@ -10,7 +10,57 @@ interface AgentMetadata extends BaseAgentMetadata {
   flow_context?: 'from_full_scheduling' | 'from_direct_auth' | 'from_scheduling_verification' | 'from_question_auth';
   // New field for storing pending question after auth flow
   pending_question?: string;
+  // CRITICAL: Store question count in metadata for reliability
+  user_question_count?: number;
 }
+
+// Centralized function to increment question count and check authentication
+const incrementQuestionCountAndCheckAuth = (realEstateAgent: any, userMessage: string) => {
+    const metadata = realEstateAgent.metadata as AgentMetadata;
+    
+    // Initialize question count if not present
+    if (!metadata.user_question_count) {
+        metadata.user_question_count = 0;
+    }
+    
+    // Increment question count for all user messages (except triggers)
+    if (!userMessage.startsWith('{Trigger msg:') && userMessage !== 'TRIGGER_BOOKING_CONFIRMATION') {
+        metadata.user_question_count++;
+        console.log(`🔍 [QuestionCounter] Incremented question count to: ${metadata.user_question_count}`);
+    }
+    
+    // Check if authentication is needed
+    const is_verified = metadata?.is_verified ?? false;
+    const questionCount = metadata.user_question_count;
+    
+    console.log(`🔍 [QuestionCounter] Status - Q#: ${questionCount}, Verified: ${is_verified}, Message: "${userMessage.substring(0, 50)}..."`);
+    
+    // AUTHENTICATION TRIGGER: After 2 questions without verification
+    if (!is_verified && questionCount >= 4) {
+        console.log("[QuestionCounter] 🚨 AUTHENTICATION REQUIRED - User not verified after 2+ questions");
+        
+        // Store the current question for later
+        metadata.pending_question = userMessage;
+        metadata.flow_context = 'from_question_auth';
+        
+        // Reset question count after triggering auth
+        metadata.user_question_count = 0;
+        
+        return {
+            needs_authentication: true,
+            destination_agent: "authentication",
+            flow_context: 'from_question_auth',
+            came_from: "realEstate",
+            pending_question: userMessage,
+            silentTransfer: true
+        };
+    }
+    
+    return { needs_authentication: false };
+};
+
+// Export the centralized function for use in other tools
+export { incrementQuestionCountAndCheckAuth };
 
 export const trackUserMessage = async ({ message }: { message: string }, realEstateAgent: any) => {
     console.log("🔍 [trackUserMessage] ENTRY - Received message:", message);
@@ -129,8 +179,24 @@ export const trackUserMessage = async ({ message }: { message: string }, realEst
     console.log("🔍 [trackUserMessage] Processing regular message:", message);
     console.log("🔍 [trackUserMessage] Current metadata verification status:", {
         is_verified: metadata?.is_verified,
-        has_scheduled: metadata?.has_scheduled
+        has_scheduled: metadata?.has_scheduled,
+        user_question_count: metadata?.user_question_count || 0
     });
+
+    // Use centralized question counting and authentication check
+    const authCheck = incrementQuestionCountAndCheckAuth(realEstateAgent, message);
+    
+    if (authCheck.needs_authentication) {
+        console.log("[trackUserMessage] 🚨 Authentication required - transferring to authentication agent");
+        return {
+            destination_agent: authCheck.destination_agent,
+            flow_context: authCheck.flow_context,
+            came_from: authCheck.came_from,
+            pending_question: authCheck.pending_question,
+            message: null,
+            silentTransfer: authCheck.silentTransfer
+        };
+    }
 
     const is_verified = metadata?.is_verified ?? false;
     const has_scheduled = metadata?.has_scheduled ?? false;
@@ -212,46 +278,20 @@ export const trackUserMessage = async ({ message }: { message: string }, realEst
         }
     }
 
-    // Track question count - Reset on agent initialization or context change
-    let questionCount = (realEstateAgent as any).questionCount || 0;
-    questionCount++;
-    (realEstateAgent as any).questionCount = questionCount;
+    // Legacy fallback for old authentication triggers (keeping for compatibility)
+    const questionCount = metadata?.user_question_count || 0;
     
-    console.log(`🔍 [trackUserMessage] Q#: ${questionCount}, Verified: ${is_verified}, Scheduled: ${has_scheduled}, Msg: "${message}"`);
-
-    // NEW AUTHENTICATION FLOW: Check if user needs verification after 2+ questions
-    if (!is_verified && questionCount > 2) {
-        console.log("[trackUserMessage] User not verified after 2+ questions, transferring to authentication for verification before proceeding");
-        
-        // Store the current question in metadata so it can be answered after verification
-        if (realEstateAgent.metadata) {
-            (realEstateAgent.metadata as AgentMetadata).pending_question = message;
-            (realEstateAgent.metadata as AgentMetadata).flow_context = 'from_question_auth';
-        }
-        
-        // Reset question count and transfer to authentication
-        (realEstateAgent as any).questionCount = 0;
-        
-        // CRITICAL: Return transfer immediately - don't process the question now
-        return { 
-            destination_agent: "authentication",
-            flow_context: 'from_question_auth',
-            came_from: "realEstate",
-            pending_question: message, // Pass the question to auth agent metadata
-            message: null, // Silent transfer
-            silentTransfer: true
-        };
-    }
-
     if (!is_verified && questionCount >= 7) {
       console.log("[trackUserMessage] User not verified after 7 questions, transferring to authentication");
-      (realEstateAgent as any).questionCount = 0;
+      // Reset question count
+      metadata.user_question_count = 0;
       return { destination_agent: "authentication" };
     }
 
     if (is_verified && !has_scheduled && questionCount >= 12) {
        console.log("[trackUserMessage] Asking user about scheduling visit.");
-       (realEstateAgent as any).questionCount = 0; 
+       // Reset question count
+       metadata.user_question_count = 0;
        return { 
          askToSchedule: true, 
          message: "Would you like to schedule a visit to see a property in person?" 
@@ -259,5 +299,9 @@ export const trackUserMessage = async ({ message }: { message: string }, realEst
     }
 
     console.log("🔍 [trackUserMessage] Returning success for regular message processing");
-    return { success: true, questionCount, message_processed_by_trackUserMessage: true }; 
+    return { 
+        success: true, 
+        questionCount: metadata?.user_question_count || 0,
+        message_processed_by_trackUserMessage: true 
+    }; 
 }; 

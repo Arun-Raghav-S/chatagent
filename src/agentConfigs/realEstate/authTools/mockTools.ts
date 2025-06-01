@@ -3,12 +3,20 @@ import { AgentConfig } from "@/types/types";
 // Mock tools from other agents to prevent "tool not found" if LLM miscalls
 export const trackUserMessage = async ({ message }: { message: string }, agent: AgentConfig) => {
   console.log("[Authentication] Received trackUserMessage call (ignoring):", message);
-  return { success: true, message: "Authentication agent acknowledges message", ui_display_hint: 'CHAT' };
+  return { 
+    success: true, 
+    message: "Authentication agent acknowledges message", 
+    ui_display_hint: 'VERIFICATION_FORM'  // Keep verification form active
+  };
 };
 
 export const detectPropertyInMessage = async ({ message }: { message: string }, agent: AgentConfig) => {
   console.log("[Authentication] Received detectPropertyInMessage call (ignoring):", message);
-  return { propertyDetected: false, message: "Authentication agent does not detect properties", ui_display_hint: 'CHAT' };
+  return { 
+    propertyDetected: false, 
+    message: "Authentication agent does not detect properties", 
+    ui_display_hint: 'VERIFICATION_FORM'  // Keep verification form active
+  };
 };
 
 // Add mock implementation for completeScheduling

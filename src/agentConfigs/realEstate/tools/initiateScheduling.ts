@@ -1,6 +1,24 @@
 import { TranscriptItem } from "@/types/types";
+import { incrementQuestionCountAndCheckAuth } from './trackUserMessage';
 
 export const initiateScheduling = async ({}: {}, realEstateAgent: any, transcript: TranscriptItem[] = []) => {
+    console.log("[initiateScheduling] User wants to schedule a visit");
+    
+    // CRITICAL: Check authentication before processing user request
+    const authCheck = incrementQuestionCountAndCheckAuth(realEstateAgent, "initiateScheduling: schedule visit");
+    
+    if (authCheck.needs_authentication) {
+        console.log("[initiateScheduling] 🚨 Authentication required - transferring to authentication agent");
+        return {
+            destination_agent: authCheck.destination_agent,
+            flow_context: authCheck.flow_context,
+            came_from: authCheck.came_from,
+            pending_question: authCheck.pending_question,
+            message: null,
+            silentTransfer: authCheck.silentTransfer
+        };
+    }
+
     const metadata = realEstateAgent.metadata;
     const metadataAny = metadata as any;
     

@@ -1,7 +1,23 @@
 import { TranscriptItem } from "@/types/types";
+import { incrementQuestionCountAndCheckAuth } from './trackUserMessage';
 
 export const lookupProperty = async ({ query, k = 3 }: { query: string; k?: number }, realEstateAgent: any, transcript: TranscriptItem[] = []) => {
     console.log(`[lookupProperty] Querying edge function: "${query}", k=${k}`);
+    
+    // CRITICAL: Check authentication before processing user request
+    const authCheck = incrementQuestionCountAndCheckAuth(realEstateAgent, `lookupProperty: ${query}`);
+    
+    if (authCheck.needs_authentication) {
+        console.log("[lookupProperty] 🚨 Authentication required - transferring to authentication agent");
+        return {
+            destination_agent: authCheck.destination_agent,
+            flow_context: authCheck.flow_context,
+            came_from: authCheck.came_from,
+            pending_question: authCheck.pending_question,
+            message: null,
+            silentTransfer: authCheck.silentTransfer
+        };
+    }
     
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
     const toolsEdgeFunctionUrl = process.env.NEXT_PUBLIC_TOOLS_EDGE_FUNCTION_URL || "https://dashboard.propzing.in/functions/v1/realtime_tools";

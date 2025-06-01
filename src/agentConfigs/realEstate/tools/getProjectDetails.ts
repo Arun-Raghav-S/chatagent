@@ -1,7 +1,28 @@
 import { TranscriptItem } from "@/types/types";
+import { incrementQuestionCountAndCheckAuth } from './trackUserMessage';
 
 export const getProjectDetails = async ({ project_id, project_name }: { project_id?: string; project_name?: string }, realEstateAgent: any, transcript: TranscriptItem[] = []) => {
     console.log(`[getProjectDetails] Fetching project details: project_id=${project_id || 'none'}, project_name=${project_name || 'none'}`);
+    
+    // CRITICAL: Only check authentication for specific property requests, not for general property lists
+    // This allows the greeting flow to work properly without triggering auth
+    const isSpecificPropertyRequest = !!(project_id || project_name);
+    
+    if (isSpecificPropertyRequest) {
+        const authCheck = incrementQuestionCountAndCheckAuth(realEstateAgent, `getProjectDetails: ${project_name || project_id}`);
+        
+        if (authCheck.needs_authentication) {
+            console.log("[getProjectDetails] 🚨 Authentication required - transferring to authentication agent");
+            return {
+                destination_agent: authCheck.destination_agent,
+                flow_context: authCheck.flow_context,
+                came_from: authCheck.came_from,
+                pending_question: authCheck.pending_question,
+                message: null,
+                silentTransfer: authCheck.silentTransfer
+            };
+        }
+    }
     
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
     const toolsEdgeFunctionUrl = process.env.NEXT_PUBLIC_TOOLS_EDGE_FUNCTION_URL || "https://dashboard.propzing.in/functions/v1/realtime_tools";
