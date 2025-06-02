@@ -929,6 +929,8 @@ export function useHandleServerEvent({
         const role = serverEvent.item?.role as "user" | "assistant" | "system";
         let text = serverEvent.item?.content?.[0]?.text ?? serverEvent.item?.content?.[0]?.transcript ?? "";
         const itemType = serverEvent.item?.type;
+        console.log("ROLE",role);
+        console.log("text",text);
 
         if (!itemId || !role) break;
         if (transcriptItems?.some((item) => item.itemId === itemId && item.status !== 'IN_PROGRESS')) {
@@ -944,6 +946,10 @@ export function useHandleServerEvent({
         if (role === "user" && text.startsWith('{Trigger msg: Say ')) {
           console.log(`[Transcript] Filtering SPEAK trigger from transcript: "${text}"`);
           break; // Don't add SPEAK triggers to the visible transcript
+        }
+        if (role === "user" && text.startsWith('My verification code ')) {
+          console.log(`[Transcript] Filtering OTP verification message from transcript: "${text}"`);
+          break; // Don't add OTP messages to the visible transcript
         }
 
         // Filter out OTP verification messages from transcript

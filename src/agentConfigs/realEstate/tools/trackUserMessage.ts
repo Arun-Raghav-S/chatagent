@@ -63,7 +63,7 @@ const incrementQuestionCountAndCheckAuth = (realEstateAgent: any, userMessage: s
     
     // AUTHENTICATION TRIGGER: After 2 questions without verification
     // CRITICAL FIX: Only trigger if user is NOT verified
-    if (!is_verified && questionCount >= 2) {
+    if (!is_verified && questionCount >= 4) {
         console.log("[QuestionCounter] 🚨 AUTHENTICATION REQUIRED - User not verified after 2+ questions");
         
         // Store the current question for later
@@ -181,25 +181,43 @@ export const trackUserMessage = async ({ message }: { message: string }, realEst
         // Continue to normal processing instead of returning booking confirmation
         // return normal success - let the question be processed normally
     } else if (metadata?.flow_context === 'from_question_auth') {
-        console.log("[trackUserMessage] Handling 'from_question_auth' context - user verified, answering pending question");
+        // CRITICAL: This can be in two scenarios:
+        // 1. User just transferred TO auth agent (not verified yet)
+        // 2. User just returned FROM auth agent (successfully verified)
         
-        // Get the pending question
-        const pendingQuestion = metadata.pending_question;
+        const is_verified = metadata?.is_verified ?? false;
         
-        if (realEstateAgent.metadata) {
-            // Mark user as verified and clear flow context
-            realEstateAgent.metadata.is_verified = true;
-            delete (realEstateAgent.metadata as any).flow_context;
-            delete (realEstateAgent.metadata as any).pending_question;
+        if (is_verified) {
+            // Scenario 2: User successfully completed verification and returned
+            console.log("[trackUserMessage] Handling 'from_question_auth' context - user SUCCESSFULLY verified, answering pending question");
+            
+            // Get the pending question
+            const pendingQuestion = metadata.pending_question;
+            
+            if (realEstateAgent.metadata) {
+                // Clear flow context and pending question since we're handling it now
+                delete (realEstateAgent.metadata as any).flow_context;
+                delete (realEstateAgent.metadata as any).pending_question;
+            }
+            
+            // Return success with instructions to answer the pending question
+            return {
+                success: true,
+                answer_pending_question: true,
+                pending_question: pendingQuestion,
+                message: `Great! You're now verified. Let me answer your question: "${pendingQuestion}"`
+            };
+        } else {
+            // Scenario 1: User just transferred to auth agent (not verified yet)
+            console.log("[trackUserMessage] Handling 'from_question_auth' context - user is in authentication flow, NOT verified yet");
+            
+            // Simply return success and let the authentication agent handle the flow
+            return {
+                success: true,
+                message: "User is in authentication flow",
+                in_auth_flow: true
+            };
         }
-        
-        // Return success with instructions to answer the pending question
-        return {
-            success: true,
-            answer_pending_question: true,
-            pending_question: pendingQuestion,
-            message: `Great! You're now verified. Let me answer your question: "${pendingQuestion}"`
-        };
     }
     // END OF PRIORITY FLOW CONTEXT HANDLING
 

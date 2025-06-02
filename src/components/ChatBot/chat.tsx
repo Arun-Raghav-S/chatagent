@@ -265,6 +265,9 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
                   const newText = isDelta ? (item.text || "") + textDelta : textDelta;
                   if(item.role === 'assistant') {
                       setLastAgentTextMessage(newText); // Update latest agent text state
+                      
+                      // Log agent transcript updates - show the complete message so far
+                      console.log(`📝 [${selectedAgentName.toUpperCase()} TRANSCRIPT]: "${newText}"`);
                   }
                   return {
                       ...item,
@@ -275,7 +278,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
               return item;
           })
       );
-  }, []);
+  }, [selectedAgentName]);
 
   const updateTranscriptItemStatus = useCallback((itemId: string, status: "IN_PROGRESS" | "DONE" | "ERROR") => {
       setTranscriptItems((prev) =>
@@ -568,7 +571,13 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
 
     // When response is done, log which agent completed the response
     if (serverEvent.type === "response.done") {
-      console.log(`[Agent Complete] ${selectedAgentName} finished response`);
+      console.log(`✅ [AGENT COMPLETE] ${selectedAgentName.toUpperCase()} finished response`);
+      
+      // Log additional context if available
+      const responseDetails = serverEvent.response as any || {};
+      if (responseDetails.usage) {
+        console.log(`📊 [RESPONSE STATS] Tokens: ${JSON.stringify(responseDetails.usage)} | Outputs: ${responseDetails.output?.length || 0}`);
+      }
     }
     
     // Add special handling for agent transfer to scheduleMeeting
@@ -643,9 +652,11 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
         const functionOutputItem = serverEvent.item as any;
         const functionName = functionOutputItem.name;
 
+        console.log(`🔧 [TOOL EXECUTED] ${selectedAgentName.toUpperCase()} executed: ${functionName}`);
+        
         // Special case: when initiating scheduling, clear previous agent messages
         if (functionName === "initiateScheduling") {
-          console.log("[handleServerEvent] Detected initiateScheduling, clearing last agent message");
+          console.log(`🔄 [SCHEDULING] ${selectedAgentName.toUpperCase()}: Detected initiateScheduling, clearing last agent message`);
           setLastAgentTextMessage(null);
         }
 
@@ -979,9 +990,13 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
          let text = serverEvent.item?.content?.[0]?.text ?? serverEvent.item?.content?.[0]?.transcript ?? "";
          const itemId = serverEvent.item?.id;
          if (itemId && text) {
+            // ALWAYS LOG AGENT TRANSCRIPT - This is what the user wants to see
+            console.log(`🎤 [${selectedAgentName.toUpperCase()} SAID]: "${text}"`);
+            
             // Log agent response when complete (not during streaming)
             if (serverEvent.item?.status === "done" || (serverEvent.item as any)?.done === true) {
-              console.log(`[Agent Response] ${selectedAgentName}: "${text.substring(0, 100)}${text.length > 100 ? '...' : ''}"`);
+              console.log(`🗣️ [AGENT SPOKE] ${selectedAgentName.toUpperCase()}: "${text}"`);
+              console.log(`📝 [AGENT DETAILS] Agent: ${selectedAgentName} | Length: ${text.length} chars | ItemID: ${itemId.substring(0, 8)}...`);
             }
             
             // Use a prefix to identify which agent sent the message
@@ -993,7 +1008,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
               // Filter out premature scheduling confirmations before time selection is complete
               if (!selectedTime && text.toLowerCase().includes('confirm') && 
                   (text.toLowerCase().includes('visit') || text.toLowerCase().includes('schedule'))) {
-                console.log(`[Agent Response] Filtering premature scheduling confirmation message`);
+                console.log(`🚫 [AGENT FILTER] ${selectedAgentName.toUpperCase()}: Filtering premature scheduling confirmation message`);
                 assistantMessageHandledLocally = true; // Skip adding this message
                 return;
               }
@@ -1001,7 +1016,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
               // Filter out repeat date selection prompts if we already have date selected
               if (selectedDay && text.toLowerCase().includes('select a date') && 
                   text.toLowerCase().includes('calendar')) {
-                console.log(`[Agent Response] Filtering repeat date selection prompt (date already selected)`);
+                console.log(`🚫 [AGENT FILTER] ${selectedAgentName.toUpperCase()}: Filtering repeat date selection prompt (date already selected)`);
                 assistantMessageHandledLocally = true; // Skip adding this message
                 return;
               }
@@ -1015,7 +1030,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
                 item.agentName === selectedAgentName));
                 
               if (isFirstMessageFromAgent) {
-                console.log(`[Agent Response] First message from new agent: ${selectedAgentName}`);
+                console.log(`🔄 [AGENT SWITCH] First message from new agent: ${selectedAgentName.toUpperCase()}`);
                 addTranscriptMessage(
                   generateSafeId(),
                   'system',
@@ -1736,7 +1751,8 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
     }
     
     // Log the newly loaded agent and its current metadata from chat.tsx state
-    console.log(`[Agent Load] Agent "${selectedAgentName}" is now active. Current chat.tsx agentMetadata:`, agentMetadata);
+    console.log(`🎯 [AGENT ACTIVE] "${selectedAgentName.toUpperCase()}" is now the active agent`);
+    console.log(`📋 [AGENT METADATA] Current agentMetadata:`, agentMetadata);
     
     const wasFromAuthentication = prevAgentNameRef.current === "authentication";
     
@@ -1744,19 +1760,19 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
     setLastAgentTextMessage(null);
 
     if (selectedAgentName === "authentication") {
-      console.log("[Agent Change] Detected switch to authentication agent.");
+      console.log(`🔐 [AGENT SWITCH] Switched TO authentication agent from: ${prevAgentNameRef.current || 'initial'}`);
       setIsVerifying(true); // Show verification UI elements
       setShowTimeSlots(false); // Hide scheduling UI
       // Explicitly set VERIFICATION_FORM display mode when switching to authentication
       setActiveDisplayMode('VERIFICATION_FORM');
-      console.log("[Agent Change] Setting VERIFICATION_FORM display mode for authentication agent");
+      console.log(`🖥️ [UI MODE] Setting VERIFICATION_FORM display mode for authentication agent`);
       
       // Do not reset OTP screen here as we want it to show after verification
       
       // Reset success message flag when entering authentication again
       hasShownSuccessMessageRef.current = false;
     } else if (selectedAgentName === "scheduleMeeting") {
-      console.log("[Agent Change] Detected switch to scheduleMeeting agent.");
+      console.log(`📅 [AGENT SWITCH] Switched TO scheduleMeeting agent from: ${prevAgentNameRef.current || 'initial'}`);
       setIsVerifying(false); // Hide verification UI if switching *to* scheduling
       setShowOtpScreen(false); // Hide OTP screen when switching away from authentication
       
@@ -1787,11 +1803,11 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
       // Always enable time slots when switching to scheduling agent
       setShowTimeSlots(true);
     } else if (selectedAgentName === "realEstate") {
-      console.log("[Agent Change] Switched back to realEstate agent.");
+      console.log(`🏠 [AGENT SWITCH] Switched TO realEstate agent from: ${prevAgentNameRef.current || 'initial'}`);
       
       // Check if this is a transition from authentication agent AND we haven't shown the success message yet
       if (wasFromAuthentication && !hasShownSuccessMessageRef.current) {
-        console.log("[Agent Change] Detected transition from authentication to realEstate - showing verification success UI");
+        console.log(`✅ [AUTH SUCCESS] Transition from authentication to realEstate - showing verification success UI`);
         
         // Mark that we've shown the success message to prevent infinite loops
         hasShownSuccessMessageRef.current = true;
