@@ -144,6 +144,12 @@ export function useHandleServerEvent({
     call_id?: string;
     arguments: string;
   }) => {
+    const { name: functionName, call_id, arguments: argsString } = functionCallParams;
+    
+    // 🚨 COMPREHENSIVE FUNCTION CALL LOGGING
+    console.log(`🔧 [FUNCTION EXECUTING] ${selectedAgentName.toUpperCase()}.${functionName}()`);
+    console.log(`📋 [FUNCTION DETAILS] Agent: ${selectedAgentName} | Function: ${functionName} | CallID: ${call_id}`);
+    
     try {
       console.log(
         `[handleFunctionCall] Raw arguments for ${functionCallParams.name}:`,
@@ -155,6 +161,9 @@ export function useHandleServerEvent({
         `[handleFunctionCall] Parsed arguments for ${functionCallParams.name}:`,
         args
       );
+      
+      // 🚨 LOG FUNCTION ARGUMENTS IN DETAIL
+      console.log(`📋 [FUNCTION ARGS] ${functionName} called with:`, Object.keys(args).map(key => `${key}: ${typeof args[key]}`).join(', '));
 
       if (functionCallParams.name === "submitPhoneNumber") {
         console.log(
@@ -231,6 +240,37 @@ export function useHandleServerEvent({
         console.log(`[handleFunctionCall] Executing tool logic for "${functionCallParams.name}" on agent "${selectedAgentName}"`);
         let fnResult = await toolFunction(args, transcriptItems || []);
         console.log(`[handleFunctionCall] Tool "${functionCallParams.name}" result:`, fnResult);
+        
+        // 🚨 COMPREHENSIVE FUNCTION RESULT LOGGING
+        console.log(`✅ [FUNCTION COMPLETED] ${selectedAgentName.toUpperCase()}.${functionName}() finished`);
+        if (fnResult) {
+          console.log(`📤 [FUNCTION RESULT] ${functionName} returned:`, {
+            hasMessage: !!fnResult.message,
+            hasError: !!fnResult.error,
+            hasProperties: !!fnResult.properties,
+            hasUIHint: !!fnResult.ui_display_hint,
+            hasTransfer: !!fnResult.destination_agent,
+            resultKeys: Object.keys(fnResult)
+          });
+          
+          if (fnResult.message) {
+            console.log(`💬 [FUNCTION MESSAGE] ${functionName}: "${fnResult.message.substring(0, 150)}${fnResult.message.length > 150 ? '...' : ''}"`);
+          }
+          
+          if (fnResult.error) {
+            console.log(`❌ [FUNCTION ERROR] ${functionName}: "${fnResult.error}"`);
+          }
+          
+          if (fnResult.ui_display_hint) {
+            console.log(`🖥️ [UI HINT] ${functionName} wants to show: ${fnResult.ui_display_hint}`);
+          }
+          
+          if (fnResult.destination_agent) {
+            console.log(`🔄 [TRANSFER] ${functionName} wants to transfer to: ${fnResult.destination_agent}`);
+          }
+        } else {
+          console.log(`📭 [FUNCTION RESULT] ${functionName} returned null/undefined`);
+        }
 
         // Special handling for trigger_scheduling response from trackUserMessage
         if (fnResult && fnResult.trigger_scheduling === true) {
@@ -745,62 +785,54 @@ export function useHandleServerEvent({
                 }
               } else if (newAgentConfig && newAgentConfig.name === "realEstate" && (fnResult.flow_context === "from_question_auth" || (newAgentPreparedMetadata as any).flow_context === "from_question_auth")) {
                 // Special handling for return to realEstate after authentication with pending question
-                console.log("[handleFunctionCall] realEstate agent transfer after authentication - sending pending question automatically");
+                console.log("[handleFunctionCall] realEstate agent transfer after authentication - SENDING pending question immediately");
                 
                 const pendingQuestion = fnResult.pending_question || (newAgentPreparedMetadata as any).pending_question;
                 
                 if (pendingQuestion) {
-                  console.log(`🚨🚨🚨 [AUTO PENDING] Sending pending question automatically: "${pendingQuestion}"`);
-                  console.log(`🚨🚨🚨 [AUTO PENDING] This should prevent chat.tsx from sending simulated "hi"`);
-                  console.log(`🚨🚨🚨 [AUTO PENDING] Keeping flow_context in metadata until AFTER pending question is sent`);
+                  console.log(`🚨🚨🚨 [PENDING QUESTION] Sending pending question immediately: "${pendingQuestion}"`);
                   
-                  // Send the pending question automatically
+                  // Clear the flow context to prevent loops
+                  if (newAgentConfig.metadata) {
+                    delete (newAgentConfig.metadata as any).flow_context;
+                    delete (newAgentConfig.metadata as any).pending_question;
+                    console.log("[handleFunctionCall] Cleared flow_context and pending_question from metadata");
+                  }
+                  
+                  // Set the display mode to show verification success (temporary)
+                  setActiveDisplayMode('VERIFICATION_SUCCESS');
+                  
+                  // Send the pending question immediately like a simulated message
                   setTimeout(() => {
-                    // Cancel any active response first to avoid race conditions
+                    // Cancel any active response first
                     if (hasActiveResponseRef.current) {
                       console.log("[handleFunctionCall] Cancelling active response before sending pending question");
                       sendClientEvent({ type: "response.cancel" }, "(cancelling before pending question)");
                       hasActiveResponseRef.current = false;
                     }
                     
-                    // Wait a bit for cancellation to process
+                    // Wait for cancellation to process
                     setTimeout(() => {
-                      const pendingQuestionMessageId = generateSafeId();
-                      console.log(`🚨🚨🚨 [AUTO PENDING] Sending pending question as user message: "${pendingQuestion}"`);
+                      const pendingMessageId = generateSafeId();
+                      console.log(`🚨🚨🚨 [PENDING QUESTION] Sending pending question as user message: "${pendingQuestion}"`);
                       
                       sendClientEvent({
                         type: "conversation.item.create",
                         item: {
-                          id: pendingQuestionMessageId,
+                          id: pendingMessageId,
                           type: "message",
                           role: "user",
                           content: [{ type: "input_text", text: pendingQuestion }]
                         }
-                      }, "(auto-pending question after authentication)");
+                      }, "(pending question after authentication)");
                       
-                      // Clear the flow context and pending question from metadata AFTER sending
-                      // This prevents chat.tsx from seeing empty metadata and sending simulated "hi"
-                      if (newAgentConfig.metadata) {
-                        delete (newAgentConfig.metadata as any).flow_context;
-                        delete (newAgentConfig.metadata as any).pending_question;
-                        console.log("[handleFunctionCall] Cleared flow_context and pending_question AFTER sending pending question");
-                      }
-                      
-                      // Also update the agent metadata state to keep it in sync
-                      setAgentMetadata(prevMetadata => {
-                        const updated = { ...prevMetadata } as any;
-                        delete updated.flow_context;
-                        delete updated.pending_question;
-                        return updated;
-                      });
-                      
-                      // Trigger response to the pending question
+                      // Trigger response to process the pending question
                       setTimeout(() => {
-                        console.log(`🚨🚨🚨 [AUTO PENDING] Triggering response for pending question`);
-                        sendClientEvent({ type: "response.create" }, "(trigger response for pending question)");
+                        console.log(`🚨🚨🚨 [PENDING QUESTION] Triggering response for pending question`);
+                        sendClientEvent({ type: "response.create" }, "(response for pending question)");
                       }, 100);
                     }, 200);
-                  }, 300); // Small delay to ensure transfer is complete
+                  }, 500); // Small delay to show verification success first
                 } else {
                   console.warn("[handleFunctionCall] No pending question found after authentication transfer");
                   // Even if no pending question, we should trigger a response for the transfer
@@ -1038,9 +1070,19 @@ export function useHandleServerEvent({
         const role = serverEvent.item?.role as "user" | "assistant" | "system";
         let text = serverEvent.item?.content?.[0]?.text ?? serverEvent.item?.content?.[0]?.transcript ?? "";
         const itemType = serverEvent.item?.type;
+        const itemStatus = serverEvent.item?.status;
+        
+        // 🚨 COMPREHENSIVE AGENT RESPONSE LOGGING - ALWAYS LOG EVERY AGENT RESPONSE
+        if (role === "assistant" && text && text.trim().length > 0) {
+          const isComplete = itemStatus === "done" || itemStatus === "completed" || (serverEvent.item as any)?.done === true;
+          const logPrefix = isComplete ? "🗣️ [AGENT COMPLETE]" : "📝 [AGENT STREAMING]";
+          const displayText = text.length > 150 ? text.substring(0, 150) + "..." : text;
+          
+          console.log(`${logPrefix} ${selectedAgentName.toUpperCase()}: "${displayText}"`);
+          console.log(`📊 [AGENT DETAILS] Agent: ${selectedAgentName} | Status: ${itemStatus} | Length: ${text.length} chars | ItemID: ${itemId?.substring(0, 8)}...`);
+        }
+        
         console.log("🎯 [CONVERSATION ITEM] Role:", role, "Text:", text, "Type:", itemType, "Agent:", selectedAgentName);
-        console.log("ROLE",role);
-        console.log("text",text);
 
         if (!itemId || !role) break;
         if (transcriptItems?.some((item) => item.itemId === itemId && item.status !== 'IN_PROGRESS')) {
@@ -1053,118 +1095,121 @@ export function useHandleServerEvent({
           console.log(`🚨🚨🚨 [Auto Counter] Processing user message: "${text}"`);
           console.log(`🚨🚨🚨 [Auto Counter] Role: ${role}, Agent: ${selectedAgentName}`);
           
-          // Count real user questions automatically
-          if (isRealUserQuestion(text, selectedAgentName)) {
-            console.log(`🚨🚨🚨 [Auto Counter] Message passed filter, proceeding to count`);
-            
-            const currentAgent = selectedAgentConfigSet?.find(a => a.name === selectedAgentName);
-            console.log(`🚨🚨🚨 [Auto Counter] Current agent found:`, !!currentAgent);
-            
-            if (currentAgent) {
-              // Initialize question count in metadata if not present
-              if (!currentAgent.metadata) {
-                console.log(`🚨🚨🚨 [Auto Counter] Initializing metadata`);
-                currentAgent.metadata = {} as AgentMetadata;
-              }
+          const currentAgent = selectedAgentConfigSet?.find(a => a.name === selectedAgentName);
+          const isVerified = currentAgent?.metadata?.is_verified ?? false;
+          
+          // Skip counting if user is already verified
+          if (isVerified) {
+            console.log(`🚨🚨🚨 [Auto Counter] User is verified - skipping question counting`);
+          } else {
+            // Count real user questions automatically only if not verified
+            if (isRealUserQuestion(text, selectedAgentName)) {
+              console.log(`🚨🚨🚨 [Auto Counter] Message passed filter, proceeding to count`);
+              console.log(`🚨🚨🚨 [Auto Counter] Current agent found:`, !!currentAgent);
               
-              const metadataWithCount = currentAgent.metadata as any; // Use any to add user_question_count
-              const currentCount = metadataWithCount.user_question_count || 0;
-              console.log(`🚨🚨🚨 [Auto Counter] Current question count: ${currentCount}`);
-              
-              if (!metadataWithCount.user_question_count) {
-                metadataWithCount.user_question_count = 0;
-                console.log(`🚨🚨🚨 [Auto Counter] Initialized question count to 0`);
-              }
-              
-              // Increment question count
-              metadataWithCount.user_question_count++;
-              const questionCount = metadataWithCount.user_question_count;
-              
-              console.log(`🚨🚨🚨 [Auto Counter] ✅ QUESTION COUNT INCREMENTED TO: ${questionCount}`);
-              console.log(`🚨🚨🚨 [Auto Counter] Message that triggered count: "${text}"`);
-              
-              // Check if authentication should be triggered (use non-async version)
-              const isVerified = currentAgent?.metadata?.is_verified ?? false;
-              console.log(`🚨🚨🚨 [Auto Counter] Verification status: ${isVerified}`);
-              console.log(`🚨🚨🚨 [Auto Counter] Should trigger auth? Count >= 3: ${questionCount >= 3}, Not verified: ${!isVerified}`);
-              
-              if (!isVerified && questionCount >= 3) {
-                console.log(`🚨🚨🚨 [AUTH TRIGGER] 🔥🔥🔥 AUTHENTICATION REQUIRED! Questions: ${questionCount}`);
+              if (currentAgent) {
+                // Initialize question count in metadata if not present
+                if (!currentAgent.metadata) {
+                  console.log(`🚨🚨🚨 [Auto Counter] Initializing metadata`);
+                  currentAgent.metadata = {} as AgentMetadata;
+                }
                 
-                // Find authentication agent
-                const authAgent = selectedAgentConfigSet?.find(a => a.name === 'authentication');
-                console.log(`🚨🚨🚨 [AUTH TRIGGER] Auth agent found:`, !!authAgent);
+                const metadataWithCount = currentAgent.metadata as any; // Use any to add user_question_count
+                const currentCount = metadataWithCount.user_question_count || 0;
+                console.log(`🚨🚨🚨 [Auto Counter] Current question count: ${currentCount}`);
                 
-                if (authAgent) {
-                  console.log(`🚨🚨🚨 [AUTH TRIGGER] Preparing to transfer to authentication agent`);
+                if (!metadataWithCount.user_question_count) {
+                  metadataWithCount.user_question_count = 0;
+                  console.log(`🚨🚨🚨 [Auto Counter] Initialized question count to 0`);
+                }
+                
+                // Increment question count
+                metadataWithCount.user_question_count++;
+                const questionCount = metadataWithCount.user_question_count;
+                
+                console.log(`🚨🚨🚨 [Auto Counter] ✅ QUESTION COUNT INCREMENTED TO: ${questionCount}`);
+                console.log(`🚨🚨🚨 [Auto Counter] Message that triggered count: "${text}"`);
+                
+                console.log(`🚨🚨🚨 [Auto Counter] Should trigger auth? Count >= 3: ${questionCount >= 3}, Not verified: ${!isVerified}`);
+                
+                if (questionCount >= 3) {
+                  console.log(`🚨🚨🚨 [AUTH TRIGGER] 🔥🔥🔥 AUTHENTICATION REQUIRED! Questions: ${questionCount}`);
                   
-                  // Prepare metadata for authentication agent
-                  const newAgentMetadata: AgentMetadata = {
-                    ...(currentAgent.metadata || {}),
-                    ...(authAgent.metadata || {}),
-                    // Preserve critical fields
-                    chatbot_id: currentAgent.metadata?.chatbot_id || authAgent.metadata?.chatbot_id,
-                    org_id: currentAgent.metadata?.org_id || authAgent.metadata?.org_id,
-                    session_id: currentAgent.metadata?.session_id || authAgent.metadata?.session_id,
-                    language: currentAgent.metadata?.language || authAgent.metadata?.language || "English",
-                    // Set authentication context
-                    flow_context: 'from_question_auth',
-                    came_from: 'realEstate',
-                    pending_question: text,
-                  } as any; // Use any to include user_question_count
+                  // Find authentication agent
+                  const authAgent = selectedAgentConfigSet?.find(a => a.name === 'authentication');
+                  console.log(`🚨🚨🚨 [AUTH TRIGGER] Auth agent found:`, !!authAgent);
                   
-                  (newAgentMetadata as any).user_question_count = questionCount;
-                  
-                  authAgent.metadata = newAgentMetadata;
-                  
-                  console.log(`🚨🚨🚨 [AUTH TRIGGER] Metadata prepared:`, {
-                    flow_context: (newAgentMetadata as any).flow_context,
-                    came_from: (newAgentMetadata as any).came_from,
-                    pending_question: (newAgentMetadata as any).pending_question,
-                    user_question_count: (newAgentMetadata as any).user_question_count
-                  });
-                  
-                  // Switch to authentication agent
-                  setSelectedAgentName('authentication');
-                  setAgentMetadata(newAgentMetadata);
-                  setActiveDisplayMode('VERIFICATION_FORM');
-                  
-                  console.log(`🚨🚨🚨 [AUTH TRIGGER] ✅ SWITCHED TO AUTHENTICATION AGENT`);
-                  console.log(`🚨🚨🚨 [AUTH TRIGGER] Pending question: "${text}"`);
-                  
-                  // Send simulated message to trigger authentication flow
-                  setTimeout(() => {
-                    const simulatedAuthMessageId = generateSafeId();
-                    console.log(`🚨🚨🚨 [AUTH TRIGGER] Sending simulated auth message`);
+                  if (authAgent) {
+                    console.log(`🚨🚨🚨 [AUTH TRIGGER] Preparing to transfer to authentication agent`);
                     
-                    sendClientEvent({
-                      type: "conversation.item.create",
-                      item: {
-                        id: simulatedAuthMessageId,
-                        type: "message",
-                        role: "user",
-                        content: [{ type: "input_text", text: "I need to verify my details" }]
-                      }
-                    }, "(auto-trigger authentication)");
+                    // Prepare metadata for authentication agent
+                    const newAgentMetadata: AgentMetadata = {
+                      ...(currentAgent.metadata || {}),
+                      ...(authAgent.metadata || {}),
+                      // Preserve critical fields
+                      chatbot_id: currentAgent.metadata?.chatbot_id || authAgent.metadata?.chatbot_id,
+                      org_id: currentAgent.metadata?.org_id || authAgent.metadata?.org_id,
+                      session_id: currentAgent.metadata?.session_id || authAgent.metadata?.session_id,
+                      language: currentAgent.metadata?.language || authAgent.metadata?.language || "English",
+                      // Set authentication context
+                      flow_context: 'from_question_auth',
+                      came_from: 'realEstate',
+                      pending_question: text,
+                    } as any; // Use any to include user_question_count
                     
+                    (newAgentMetadata as any).user_question_count = questionCount;
+                    
+                    authAgent.metadata = newAgentMetadata;
+                    
+                    console.log(`🚨🚨🚨 [AUTH TRIGGER] Metadata prepared:`, {
+                      flow_context: (newAgentMetadata as any).flow_context,
+                      came_from: (newAgentMetadata as any).came_from,
+                      pending_question: (newAgentMetadata as any).pending_question,
+                      user_question_count: (newAgentMetadata as any).user_question_count
+                    });
+                    
+                    // Switch to authentication agent
+                    setSelectedAgentName('authentication');
+                    setAgentMetadata(newAgentMetadata);
+                    setActiveDisplayMode('VERIFICATION_FORM');
+                    
+                    console.log(`🚨🚨🚨 [AUTH TRIGGER] ✅ SWITCHED TO AUTHENTICATION AGENT`);
+                    console.log(`🚨🚨🚨 [AUTH TRIGGER] Pending question: "${text}"`);
+                    
+                    // Send simulated message to trigger authentication flow
                     setTimeout(() => {
-                      console.log(`🚨🚨🚨 [AUTH TRIGGER] Triggering auth response`);
-                      sendClientEvent({ type: "response.create" }, "(auto-trigger auth response)");
-                    }, 100);
-                  }, 200);
-                  
-                  console.log(`🚨🚨🚨 [AUTH TRIGGER] Authentication initiated successfully`);
+                      const simulatedAuthMessageId = generateSafeId();
+                      console.log(`🚨🚨🚨 [AUTH TRIGGER] Sending simulated auth message`);
+                      
+                      sendClientEvent({
+                        type: "conversation.item.create",
+                        item: {
+                          id: simulatedAuthMessageId,
+                          type: "message",
+                          role: "user",
+                          content: [{ type: "input_text", text: "I need to verify my details" }]
+                        }
+                      }, "(auto-trigger authentication)");
+                      
+                      setTimeout(() => {
+                        console.log(`🚨🚨🚨 [AUTH TRIGGER] Triggering auth response`);
+                        sendClientEvent({ type: "response.create" }, "(auto-trigger auth response)");
+                      }, 100);
+                    }, 200);
+                    
+                    console.log(`🚨🚨🚨 [AUTH TRIGGER] Authentication initiated successfully`);
+                  } else {
+                    console.error(`🚨🚨🚨 [AUTH TRIGGER] ❌ Authentication agent not found!`);
+                  }
                 } else {
-                  console.error(`🚨🚨🚨 [AUTH TRIGGER] ❌ Authentication agent not found!`);
+                  console.log(`🚨🚨🚨 [Auto Counter] No auth needed - continuing normal flow`);
                 }
               } else {
-                console.log(`🚨🚨🚨 [Auto Counter] No auth needed - continuing normal flow`);
+                console.error(`🚨🚨🚨 [Auto Counter] ❌ Current agent not found!`);
               }
             } else {
-              console.error(`🚨🚨🚨 [Auto Counter] ❌ Current agent not found!`);
+              console.log(`🚨🚨🚨 [Auto Counter] Message filtered out, not counting`);
             }
-          } else {
-            console.log(`🚨🚨🚨 [Auto Counter] Message filtered out, not counting`);
           }
         } else {
           console.log(`🚨🚨🚨 [Auto Counter] Skipping - Role: ${role}, HasText: ${!!text}, Agent: ${selectedAgentName}`);
@@ -1199,9 +1244,10 @@ export function useHandleServerEvent({
         }
 
         // Filter out pending questions from transcript - they should be processed but not shown to user
-        if (role === "user" && text === "I am interested in something else") {
-          console.log(`[Transcript] Filtering pending question from transcript: "${text}"`);
-          break; // Don't add pending questions to the visible transcript
+        if (role === "user" && (text === "I am interested in something else" || 
+            text === "I need to verify my details")) {
+          console.log(`[Transcript] Filtering internal/pending question from transcript: "${text}"`);
+          break; // Don't add internal messages to the visible transcript
         }
 
         // Filter out TRIGGER_BOOKING_CONFIRMATION from transcript - it's an internal trigger
@@ -1227,26 +1273,37 @@ export function useHandleServerEvent({
               // Add message to transcript if present in the outputData from the tool.
               // The actual UI display (gallery, list, details) is driven by setActiveDisplayMode from handleFunctionCall.
               if (outputData.message) {
+                // 🚨 LOG FUNCTION CALL OUTPUT MESSAGE
+                console.log(`🔧 [TOOL RESPONSE] ${selectedAgentName.toUpperCase()} (${functionName}): "${outputData.message}"`);
+                
                 if (!transcriptItems?.some(item => item.itemId === itemId)) {
-                    addTranscriptMessage(itemId, "assistant", outputData.message, outputData.properties || outputData.images || []);
+                    addTranscriptMessage(itemId, "assistant", outputData.message, outputData.properties || outputData.images || [], selectedAgentName);
                 } else {
                     updateTranscriptMessage(itemId, outputData.message, false);
                 }
               } else if (outputData.error) {
+                // 🚨 LOG FUNCTION CALL ERROR
+                console.log(`❌ [TOOL ERROR] ${selectedAgentName.toUpperCase()} (${functionName}): "${outputData.error}"`);
+                
                  if (!transcriptItems?.some(item => item.itemId === itemId)) {
-                    addTranscriptMessage(itemId, "assistant", `Error: ${outputData.error}`);
+                    addTranscriptMessage(itemId, "assistant", `Error: ${outputData.error}`, [], selectedAgentName);
                  } else {
                     updateTranscriptMessage(itemId, `Error: ${outputData.error}`, false);
                  }
               } else if (functionName === 'getAvailableSlots' && outputData.slots) {
                  // For getAvailableSlots, the UI update (showing slots) is triggered by setActiveDisplayMode('SCHEDULING_FORM').
-                 // The agent should also provide a textual message.
-                 const defaultSlotsMessage = "Please select a date and time for your visit.";
-                 if (!transcriptItems?.some(item => item.itemId === itemId)) {
-                    addTranscriptMessage(itemId, "assistant", outputData.text_message || defaultSlotsMessage); 
-                 } else {
-                    updateTranscriptMessage(itemId, outputData.text_message || defaultSlotsMessage, false);
-                 }
+                                // The agent should also provide a textual message.
+               const defaultSlotsMessage = "Please select a date and time for your visit.";
+               const slotsMessage = outputData.text_message || defaultSlotsMessage;
+               
+               // 🚨 LOG SCHEDULING SLOTS MESSAGE
+               console.log(`📅 [SCHEDULING RESPONSE] ${selectedAgentName.toUpperCase()}: "${slotsMessage}"`);
+               
+               if (!transcriptItems?.some(item => item.itemId === itemId)) {
+                  addTranscriptMessage(itemId, "assistant", slotsMessage, [], selectedAgentName); 
+               } else {
+                  updateTranscriptMessage(itemId, slotsMessage, false);
+               }
                  // Actual slot data (outputData.slots) is handled via chat.tsx state if needed by TimePick directly,
                  // or passed via property in fnResult.scheduling_data if that pattern is used.
               }
@@ -1271,10 +1328,20 @@ export function useHandleServerEvent({
             let assistantMessageHandledLocally = false;
             let text = serverEvent.item?.content?.[0]?.text ?? serverEvent.item?.content?.[0]?.transcript ?? "";
             const itemId = serverEvent.item?.id;
+            const itemStatus = serverEvent.item?.status;
+            
             if (itemId && text) {
-               // Log agent response when complete (not during streaming)
-               if (serverEvent.item?.status === "done" || (serverEvent.item as any)?.done === true) {
-                 console.log(`[Agent Response] ${selectedAgentName}: "${text.substring(0, 100)}${text.length > 100 ? '...' : ''}"`);
+               // 🚨 COMPREHENSIVE LOGGING FOR REGULAR ASSISTANT MESSAGES
+               const isComplete = itemStatus === "done" || itemStatus === "completed" || (serverEvent.item as any)?.done === true;
+               const logPrefix = isComplete ? "💬 [REGULAR MESSAGE COMPLETE]" : "💬 [REGULAR MESSAGE STREAMING]";
+               const displayText = text.length > 100 ? text.substring(0, 100) + "..." : text;
+               
+               console.log(`${logPrefix} ${selectedAgentName.toUpperCase()}: "${displayText}"`);
+               console.log(`📋 [MESSAGE DETAILS] Agent: ${selectedAgentName} | Status: ${itemStatus} | Full Length: ${text.length} chars`);
+               
+               // ALWAYS LOG THE COMPLETE MESSAGE FOR DEBUGGING
+               if (isComplete && text.length > 100) {
+                 console.log(`📄 [FULL MESSAGE] ${selectedAgentName.toUpperCase()}: "${text}"`);
                }
                
                // Use a prefix to identify which agent sent the message
@@ -1337,8 +1404,8 @@ export function useHandleServerEvent({
                  }
                }
                
-               // Add message to transcript with agent prefix
-               addTranscriptMessage(itemId, 'assistant', agentPrefix + text);
+               // Add message to transcript with agent prefix and agent name
+               addTranscriptMessage(itemId, 'assistant', agentPrefix + text, undefined, selectedAgentName);
                
                // Ensure we keep the verification form visible even after authentication agent responds
                if (preserveCurrentMode) {
@@ -1368,7 +1435,7 @@ export function useHandleServerEvent({
         }
         // Ensure item is not already in transcript from optimistic update or previous processing pass
         if (!transcriptItems?.some((item) => item.itemId === itemId)) {
-            addTranscriptMessage(itemId, role, text, (serverEvent.item?.type === "function_call_output" && JSON.parse((serverEvent.item as any).output || "{}").properties) || []);
+            addTranscriptMessage(itemId, role, text, (serverEvent.item?.type === "function_call_output" && JSON.parse((serverEvent.item as any).output || "{}").properties) || [], selectedAgentName);
         } else if (itemType !== "function_call_output") { // Only update if not a func call output (already handled message part)
             const existingItem = transcriptItems.find(item => item.itemId === itemId);
             if (existingItem && existingItem.status === 'IN_PROGRESS') {
@@ -1394,14 +1461,19 @@ export function useHandleServerEvent({
           console.log(`🚨🚨🚨 [Auto Counter] Processing completed transcript: "${finalTranscript}"`);
           console.log(`🚨🚨🚨 [Auto Counter] Agent: ${selectedAgentName}`);
           
-          // Count real user questions automatically
-          if (isRealUserQuestion(finalTranscript, selectedAgentName)) {
-            console.log(`🚨🚨🚨 [Auto Counter] Transcript passed filter, proceeding to count`);
-            
-            const currentAgent = selectedAgentConfigSet?.find(a => a.name === selectedAgentName);
-            console.log(`🚨🚨🚨 [Auto Counter] Current agent found:`, !!currentAgent);
-            
-            if (currentAgent) {
+          const currentAgent = selectedAgentConfigSet?.find(a => a.name === selectedAgentName);
+          const isVerified = currentAgent?.metadata?.is_verified ?? false;
+          
+          // Skip counting if user is already verified
+          if (isVerified) {
+            console.log(`🚨🚨🚨 [Auto Counter] User is verified - skipping question counting for transcript`);
+          } else {
+            // Count real user questions automatically only if not verified
+            if (isRealUserQuestion(finalTranscript, selectedAgentName)) {
+              console.log(`🚨🚨🚨 [Auto Counter] Transcript passed filter, proceeding to count`);
+              console.log(`🚨🚨🚨 [Auto Counter] Current agent found:`, !!currentAgent);
+              
+              if (currentAgent) {
               // Initialize question count in metadata if not present
               if (!currentAgent.metadata) {
                 console.log(`🚨🚨🚨 [Auto Counter] Initializing metadata`);
@@ -1505,8 +1577,9 @@ export function useHandleServerEvent({
               console.error(`🚨🚨🚨 [Auto Counter] ❌ Current agent not found!`);
             }
           } else {
-            console.log(`��🚨🚨 [Auto Counter] Transcript filtered out, not counting`);
+            console.log(`🚨🚨🚨 [Auto Counter] Transcript filtered out, not counting`);
           }
+        }
         } else {
           console.log(`🚨🚨🚨 [Auto Counter] Skipping transcript - Agent: ${selectedAgentName}, HasText: ${!!finalTranscript}, IsInaudible: ${finalTranscript === "[inaudible]"}`);
         }
@@ -1560,7 +1633,33 @@ export function useHandleServerEvent({
         // When a response is completed, clear the active response flag
         hasActiveResponseRef.current = false;
         const currentAgentNameInResponse = selectedAgentName; // Capture at event time
+        
+        // 🚨 LOG EVERY RESPONSE.DONE EVENT WITH AGENT NAME
+        console.log(`✅ [RESPONSE COMPLETE] ${currentAgentNameInResponse.toUpperCase()} finished response`);
         console.log(`[Server Event Hook] Response done. Agent: ${currentAgentNameInResponse}. Transferring flag: ${isTransferringAgentRef.current}, Target: ${agentBeingTransferredToRef.current}`);
+        
+        // Log additional response details
+        const responseDetails = serverEvent.response as any || {};
+        if (responseDetails.usage) {
+          console.log(`📊 [RESPONSE STATS] Agent: ${currentAgentNameInResponse} | Tokens: ${JSON.stringify(responseDetails.usage)} | Outputs: ${responseDetails.output?.length || 0}`);
+        }
+        
+        // Log what outputs are in the response
+        if (responseDetails.output && responseDetails.output.length > 0) {
+          console.log(`📤 [RESPONSE OUTPUTS] ${currentAgentNameInResponse.toUpperCase()} generated ${responseDetails.output.length} output(s):`);
+          responseDetails.output.forEach((output: any, index: number) => {
+            if (output.type === 'message') {
+              const content = output.content?.[0]?.text || 'No text content';
+              console.log(`  ${index + 1}. MESSAGE: "${content.substring(0, 100)}${content.length > 100 ? '...' : ''}"`);
+            } else if (output.type === 'function_call') {
+              console.log(`  ${index + 1}. FUNCTION_CALL: ${output.name}(${Object.keys(JSON.parse(output.arguments || '{}')).join(', ')})`);
+            } else {
+              console.log(`  ${index + 1}. ${output.type?.toUpperCase()}: ${JSON.stringify(output).substring(0, 100)}...`);
+            }
+          });
+        } else {
+          console.log(`📭 [NO OUTPUTS] ${currentAgentNameInResponse.toUpperCase()} response contained no outputs`);
+        }
 
         // Add a small delay before processing tools to avoid race conditions
         const delayBeforeProcessing = isTransferringAgentRef.current ? 100 : 0;

@@ -209,6 +209,8 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
   const hasShownSuccessMessageRef = useRef<boolean>(false);
   // Add a ref to track the last property query message to avoid repeated processing
   const lastPropertyQueryRef = useRef<string | null>(null);
+  // Add a ref to track if we've already processed a pending question to avoid duplicates
+  const pendingQuestionProcessedRef = useRef<boolean>(false);
 
   // Initialize start time when the connection is established
   const [startTime, setStartTime] = useState<string | null>(null);
@@ -267,7 +269,8 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
                       setLastAgentTextMessage(newText); // Update latest agent text state
                       
                       // Log agent transcript updates - show the complete message so far
-                      console.log(`📝 [${selectedAgentName.toUpperCase()} TRANSCRIPT]: "${newText}"`);
+                      console.log(`📝 [${selectedAgentName.toUpperCase()} STREAMING]: "${newText}"`);
+                      console.log(`📊 [STREAMING DETAILS] Agent: ${selectedAgentName} | ItemID: ${itemId.substring(0, 8)}... | Length: ${newText.length} chars | isDelta: ${isDelta}`);
                   }
                   return {
                       ...item,
@@ -569,14 +572,24 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
       console.log("[handleServerEvent] Properties are already being loaded, skipping duplicate loading");
     }
 
-    // When response is done, log which agent completed the response
+    // 🚨 COMPREHENSIVE RESPONSE.DONE LOGGING FROM CHAT.TSX
     if (serverEvent.type === "response.done") {
-      console.log(`✅ [AGENT COMPLETE] ${selectedAgentName.toUpperCase()} finished response`);
+      console.log(`✅ [AGENT FINISHED] ${selectedAgentName.toUpperCase()} completed full response`);
       
       // Log additional context if available
       const responseDetails = serverEvent.response as any || {};
       if (responseDetails.usage) {
-        console.log(`📊 [RESPONSE STATS] Tokens: ${JSON.stringify(responseDetails.usage)} | Outputs: ${responseDetails.output?.length || 0}`);
+        console.log(`📊 [USAGE STATS] Agent: ${selectedAgentName} | Tokens: ${JSON.stringify(responseDetails.usage)} | Outputs: ${responseDetails.output?.length || 0}`);
+      }
+      
+      // Log if this was a transfer scenario
+      if (serverEvent.response?.output) {
+        const hasTransferCall = serverEvent.response.output.some((output: any) => 
+          output.type === 'function_call' && (output.name === 'transferAgents' || output.name === 'initiateScheduling')
+        );
+        if (hasTransferCall) {
+          console.log(`🔄 [TRANSFER DETECTED] ${selectedAgentName.toUpperCase()} response included transfer function call`);
+        }
       }
     }
     
@@ -990,13 +1003,17 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
          let text = serverEvent.item?.content?.[0]?.text ?? serverEvent.item?.content?.[0]?.transcript ?? "";
          const itemId = serverEvent.item?.id;
          if (itemId && text) {
-            // ALWAYS LOG AGENT TRANSCRIPT - This is what the user wants to see
-            console.log(`🎤 [${selectedAgentName.toUpperCase()} SAID]: "${text}"`);
+            // 🚨 COMPREHENSIVE AGENT RESPONSE LOGGING - CHAT.TSX SIDE
+            const itemStatus = serverEvent.item?.status;
+            const isComplete = itemStatus === "done" || itemStatus === "completed" || (serverEvent.item as any)?.done === true;
             
-            // Log agent response when complete (not during streaming)
-            if (serverEvent.item?.status === "done" || (serverEvent.item as any)?.done === true) {
-              console.log(`🗣️ [AGENT SPOKE] ${selectedAgentName.toUpperCase()}: "${text}"`);
-              console.log(`📝 [AGENT DETAILS] Agent: ${selectedAgentName} | Length: ${text.length} chars | ItemID: ${itemId.substring(0, 8)}...`);
+            if (isComplete) {
+              console.log(`🎤 [${selectedAgentName.toUpperCase()} SPOKE COMPLETE]: "${text}"`);
+              console.log(`🗣️ [AGENT FINAL] ${selectedAgentName.toUpperCase()}: Full message logged above`);
+              console.log(`📝 [AGENT SUMMARY] Agent: ${selectedAgentName} | Status: ${itemStatus} | Length: ${text.length} chars | ItemID: ${itemId.substring(0, 8)}...`);
+            } else {
+              console.log(`🎤 [${selectedAgentName.toUpperCase()} SPEAKING]: "${text.substring(0, 100)}${text.length > 100 ? '...' : ''}"`);
+              console.log(`📝 [AGENT PROGRESS] Agent: ${selectedAgentName} | Status: ${itemStatus} | Current length: ${text.length} chars`);
             }
             
             // Use a prefix to identify which agent sent the message
@@ -1629,11 +1646,17 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
                            }, 500);
                        } else {
                            // CRITICAL: Don't send simulated "hi" if pending question will be sent by useHandleServerEvent
-                           const willReceivePendingQuestion = isReturningToRealEstateAfterQuestionAuth;
-                           const finalShouldSendHi = shouldSendSimulatedHi && !willReceivePendingQuestion;
-                           
-                           console.log(`[Effect] Final decision - sending simulated 'hi': ${finalShouldSendHi} (original: ${shouldSendSimulatedHi}, willReceivePending: ${willReceivePendingQuestion})`);
-                           updateSession(finalShouldSendHi);
+                                                  const willReceivePendingQuestion = isReturningToRealEstateAfterQuestionAuth;
+                       const finalShouldSendHi = shouldSendSimulatedHi && !willReceivePendingQuestion;
+                       
+                       console.log(`[Effect] Final decision - sending simulated 'hi': ${finalShouldSendHi} (original: ${shouldSendSimulatedHi}, willReceivePending: ${willReceivePendingQuestion})`);
+                       
+                       // CRITICAL: Don't send simulated "hi" if we're showing verification success with a pending question
+                       const isShowingVerificationSuccess = activeDisplayMode === 'VERIFICATION_SUCCESS' && willReceivePendingQuestion;
+                       const finalFinalShouldSendHi = finalShouldSendHi && !isShowingVerificationSuccess;
+                       
+                       console.log(`[Effect] Final-final decision - sending simulated 'hi': ${finalFinalShouldSendHi} (verification success check: ${isShowingVerificationSuccess})`);
+                       updateSession(finalFinalShouldSendHi);
                        }
                        
                        // Initialize mic state after session is updated (since mic starts unmuted)
@@ -1670,7 +1693,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
       // - agentMetadata: Trigger *only* when the essential initial metadata (chatbotId/session_id) is first available.
       // - selectedAgentConfigSet: Ensure config is loaded.
       // Dependencies fetchOrgMetadata and updateSession are stable useCallback refs.
-  }, [sessionStatus, selectedAgentName, agentMetadata?.chatbot_id, agentMetadata?.session_id, selectedAgentConfigSet, fetchOrgMetadata, updateSession, updateSessionMicState, addTranscriptMessage]);
+  }, [sessionStatus, selectedAgentName, agentMetadata?.chatbot_id, agentMetadata?.session_id, selectedAgentConfigSet, fetchOrgMetadata, updateSession, updateSessionMicState, addTranscriptMessage, activeDisplayMode]);
 
   // Separate effect to reset the setup flag when the agent name changes
   const previousAgentNameRef = useRef<string | null>(null);
@@ -2298,6 +2321,8 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
       setStartTime(new Date().toISOString());
     }
   }, [sessionStatus, startTime]);
+
+  // NOTE: Pending question handling moved to useHandleServerEvent.ts for immediate processing
 
   // Effect to handle the display duration of BOOKING_CONFIRMATION
   // useEffect(() => {
