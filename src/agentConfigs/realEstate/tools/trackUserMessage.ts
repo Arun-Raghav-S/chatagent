@@ -23,71 +23,116 @@ const incrementQuestionCountAndCheckAuth = (realEstateAgent: any, userMessage: s
         metadata.user_question_count = 0;
     }
     
-    // Increment question count for all user messages (except triggers)
-    if (!userMessage.startsWith('{Trigger msg:') && userMessage !== 'TRIGGER_BOOKING_CONFIRMATION') {
+    // FIXED: Only increment for actual user questions, not internal tool calls, agent messages, or simulated messages
+    // Skip triggers, confirmations, internal tool calls, and the initial simulated "hi" message
+    const isInternalCall = userMessage.startsWith('{Trigger msg:') || 
+                          userMessage === 'TRIGGER_BOOKING_CONFIRMATION' ||
+                          userMessage.includes('initiateScheduling') ||
+                          userMessage.includes('completeScheduling') ||
+                          userMessage.includes('getAvailableSlots') ||
+                          userMessage.includes('in authentication') ||
+                          userMessage.startsWith('My verification code') ||
+                          userMessage.includes('verification code is') ||
+                          userMessage === 'I need to verify my details' ||
+                          userMessage === 'I am interested in something else' ||
+                          userMessage === 'Hello, I need help with booking a visit. Please show me available dates.';
+    
+    // CRITICAL FIX: Exclude the simulated "hi" message from question counting
+    // This prevents the initial greeting from counting toward authentication threshold
+    const isSimulatedGreeting = userMessage.toLowerCase().trim() === 'hi' && metadata.user_question_count === 0;
+    
+    // NEW FIX: Filter out phantom audio transcriptions from ambient noise/microphone pickup
+    // Be VERY careful here - we don't want to filter out legitimate user responses
+    const isLikelyPhantomAudio = (
+        // Very short utterances (likely accidental sounds) - but allow common responses
+        (userMessage.trim().length <= 2 && !['hi', 'no', 'ok'].includes(userMessage.toLowerCase().trim())) ||
+        // Specific phantom transcriptions from ambient audio (be very specific)
+        userMessage.toLowerCase().trim() === 'thank you' ||
+        userMessage.toLowerCase().trim() === 'thanks' ||
+        userMessage.toLowerCase().trim() === 'mm-hmm' ||
+        userMessage.toLowerCase().trim() === 'uh-huh' ||
+        userMessage.toLowerCase().trim() === 'mm' ||
+        userMessage.toLowerCase().trim() === 'hmm' ||
+        // Only catch very incomplete/nonsensical fragments, not real questions
+        (userMessage.includes('can you tell me') && userMessage.split(' ').length < 5) ||
+        (userMessage.startsWith('brochures') && userMessage.split(' ').length < 4 && !userMessage.includes('about'))
+    );
+    
+    // Only increment for actual user interactions
+    if (!isInternalCall && !isSimulatedGreeting && !isLikelyPhantomAudio) {
         metadata.user_question_count++;
-        console.log(`🔍 [QuestionCounter] Incremented question count to: ${metadata.user_question_count}`);
+        console.log(`🔍 [QuestionCounter] Incremented USER question count to: ${metadata.user_question_count}`);
+    } else if (isSimulatedGreeting) {
+        console.log(`🔍 [QuestionCounter] SKIPPED simulated greeting "hi" - not counting toward authentication threshold`);
+    } else if (isLikelyPhantomAudio) {
+        console.log(`🔍 [QuestionCounter] SKIPPED likely phantom audio transcription: "${userMessage}" - not counting toward authentication threshold`);
+    } else {
+        console.log(`🔍 [QuestionCounter] SKIPPED internal call: "${userMessage}" - not counting toward authentication threshold`);
     }
     
-    // Check if authentication is needed
-    let is_verified = metadata?.is_verified ?? false;
+    console.log(`🔍 [QuestionCounter] Status - Q#: ${metadata.user_question_count}, Verified: ${metadata.is_verified}, Message: "${userMessage.substring(0, 20)}..."`);
+    
+    // FIXED: Check authentication threshold after 3 ACTUAL user questions (allowing 2 free questions)
     const questionCount = metadata.user_question_count;
+    const isVerified = metadata.is_verified;
     
-    console.log(`🔍 [QuestionCounter] Status - Q#: ${questionCount}, Verified: ${is_verified}, Message: "${userMessage.substring(0, 50)}..."`);
-    
-    // CRITICAL DEBUG: Check why user might be verified when they shouldn't be
-    if (is_verified) {
-        console.log("🚨🚨🚨 [QuestionCounter] User is VERIFIED, authentication check skipped");
-        console.log("🚨🚨🚨 [QuestionCounter] Full verification details:", {
-            is_verified,
-            customer_name: metadata?.customer_name,
-            phone_number: metadata?.phone_number,
-            verification_timestamp: (metadata as any)?.verification_timestamp || 'not set'
-        });
-        
-        // TEMPORARY DEBUG: Check if this might be from a previous session
-        // If the user has a name and phone but this is a new conversation, maybe reset verification
-        const hasNameAndPhone = metadata?.customer_name && metadata?.phone_number;
-        const questionCountLow = questionCount <= 2;
-        
-        if (hasNameAndPhone && questionCountLow) {
-            console.log("🚨🚨🚨 [QuestionCounter] Suspicious: User verified with name/phone but low question count");
-            console.log("🚨🚨🚨 [QuestionCounter] This might be from a previous session - should we reset verification?");
-            
-            // TEMPORARY DEBUG: For testing, let's see what happens if we reset verification
-            // TODO: Remove this after debugging
-            metadata.is_verified = false;
-            console.log("🚨🚨🚨 [DEBUG] TEMPORARILY RESET is_verified to false for testing");
-        }
-    }
-    
-    // AUTHENTICATION TRIGGER: After 2 questions without verification
-    // CRITICAL FIX: Only trigger if user is NOT verified
-    if (!is_verified && questionCount >= 4) {
-        console.log("[QuestionCounter] 🚨 AUTHENTICATION REQUIRED - User not verified after 2+ questions");
-        
-        // Store the current question for later
-        metadata.pending_question = userMessage;
-        metadata.flow_context = 'from_question_auth';
-        
-        // Reset question count after triggering auth
-        // metadata.user_question_count = 0;
+    // Trigger authentication only after 3 real user questions for unverified users
+    // This allows users to ask 2 questions freely before requiring verification
+    if (!isVerified && questionCount >= 3) {
+        console.log(`🔍 [QuestionCounter] AUTHENTICATION THRESHOLD REACHED! Questions: ${questionCount}, Verified: ${isVerified}`);
+        console.log(`🔍 [QuestionCounter] Triggering authentication flow for pending question: "${userMessage}"`);
         
         return {
             needs_authentication: true,
-            destination_agent: "authentication",
+            destination_agent: 'authentication',
             flow_context: 'from_question_auth',
-            came_from: "realEstate",
+            came_from: 'realEstate',
             pending_question: userMessage,
-            silentTransfer: true
+            silentTransfer: true,
+            ui_display_hint: 'VERIFICATION_FORM'
         };
     }
     
-    return { needs_authentication: false };
+    return {
+        needs_authentication: false,
+        questionCount: questionCount
+    };
 };
 
-// Export the centralized function for use in other tools
-export { incrementQuestionCountAndCheckAuth };
+// Function to check authentication without incrementing count (for other tools)
+export const checkAuthenticationOnly = (realEstateAgent: any, toolName: string) => {
+    const metadata = realEstateAgent.metadata as AgentMetadata;
+    
+    // Initialize question count if not present
+    if (!metadata.user_question_count) {
+        metadata.user_question_count = 0;
+    }
+    
+    const questionCount = metadata.user_question_count;
+    const isVerified = metadata.is_verified;
+    
+    console.log(`🔍 [checkAuthenticationOnly] Tool: ${toolName}, Questions: ${questionCount}, Verified: ${isVerified}`);
+    
+    // Check if authentication is needed (after 3 questions without verification)
+    if (!isVerified && questionCount >= 3) {
+        console.log(`🔍 [checkAuthenticationOnly] Authentication required for ${toolName} - Questions: ${questionCount}, Verified: ${isVerified}`);
+        
+        return {
+            needs_authentication: true,
+            destination_agent: 'authentication',
+            flow_context: 'from_question_auth',
+            came_from: 'realEstate',
+            pending_question: `User tried to use ${toolName}`,
+            silentTransfer: true,
+            ui_display_hint: 'VERIFICATION_FORM'
+        };
+    }
+    
+    return {
+        needs_authentication: false,
+        questionCount: questionCount
+    };
+};
 
 export const trackUserMessage = async ({ message }: { message: string }, realEstateAgent: any) => {
     console.log("🔍 [trackUserMessage] ENTRY - Received message:", message);

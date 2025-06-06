@@ -1,5 +1,5 @@
 import { TranscriptItem } from "@/types/types";
-import { incrementQuestionCountAndCheckAuth } from './trackUserMessage';
+import { checkAuthenticationOnly } from './trackUserMessage';
 
 interface ShowPropertyBrochureParams {
   property_name?: string;
@@ -20,7 +20,7 @@ export const showPropertyBrochure = async ({ property_name }: { property_name?: 
     console.log(`[showPropertyBrochure] Showing brochure for property: ${property_name || 'active property'}`);
     
     // CRITICAL: Check authentication before processing user request
-    const authCheck = incrementQuestionCountAndCheckAuth(realEstateAgent, `showPropertyBrochure: ${property_name || 'property brochure'}`);
+    const authCheck = checkAuthenticationOnly(realEstateAgent, 'showPropertyBrochure');
     
     if (authCheck.needs_authentication) {
         console.log("[showPropertyBrochure] 🚨 Authentication required - transferring to authentication agent");

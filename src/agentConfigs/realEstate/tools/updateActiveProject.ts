@@ -1,42 +1,42 @@
+import { AgentMetadata } from "@/types/types";
+
 export const updateActiveProject = async ({ project_name }: { project_name: string }, realEstateAgent: any, getInstructions: any) => {
     console.log(`[updateActiveProject] Attempting to set active project to: "${project_name}"`);
-    const metadata = realEstateAgent.metadata;
-    if (!metadata) {
-        console.error("[updateActiveProject] Agent metadata is missing.");
-        return { success: false, message: "Agent metadata unavailable." };
-    }
-
-    const availableProjects = metadata.project_names || [];
-    const trimmedProjectName = project_name.trim();
-
-    // Find the project in available projects (case-insensitive)
-    const matchedProject = availableProjects.find(
-       (p: string) => p.trim().toLowerCase() === trimmedProjectName.toLowerCase()
-    );
-
-    if (!matchedProject) {
-       console.error(`[updateActiveProject] Project "${trimmedProjectName}" not found in available list: ${availableProjects.join(", ")}`);
-       return { success: false, message: `Project "${trimmedProjectName}" is not recognized.` };
-    }
-
-    // Update metadata
-    const previousProject = metadata.active_project;
-    metadata.active_project = matchedProject; // Use original casing
     
-    // Store the project_id too if available in project_id_map
+    const metadata = realEstateAgent.metadata as AgentMetadata;
     const metadataAny = metadata as any;
-    if (metadataAny.project_id_map && metadataAny.project_id_map[matchedProject]) {
-        metadataAny.active_project_id = metadataAny.project_id_map[matchedProject];
-        console.log(`[updateActiveProject] Set active_project_id to: ${metadataAny.active_project_id}`);
+    
+    const previousActiveProject = metadata?.active_project || "N/A";
+    
+    // Update active project in metadata
+    if (realEstateAgent.metadata) {
+        realEstateAgent.metadata.active_project = project_name;
+        
+        // Also update the active_project_id if we have a project_id_map
+        if (metadataAny?.project_id_map && metadataAny.project_id_map[project_name]) {
+            metadataAny.active_project_id = metadataAny.project_id_map[project_name];
+            console.log(`[updateActiveProject] Set active_project_id to: ${metadataAny.active_project_id}`);
+        }
+        
+        // Update the agent's instructions with new metadata
+        if (getInstructions && typeof getInstructions === 'function') {
+            realEstateAgent.instructions = getInstructions(realEstateAgent.metadata);
+        }
     }
-
-    // Update instructions (important!)
-    realEstateAgent.instructions = getInstructions(metadata);
-
-    console.log(`[updateActiveProject] Success: Active project changed from "${previousProject}" to "${matchedProject}"`);
+    
+    console.log(`[updateActiveProject] Success: Active project changed from "${previousActiveProject}" to "${project_name}"`);
+    
+    // CRITICAL: Return a hint to call getProjectDetails to show information about the newly active property
     return { 
         success: true, 
-        active_project: matchedProject,
-        active_project_id: (metadata as any).active_project_id || null
+        active_project: project_name,
+        active_project_id: metadataAny?.active_project_id,
+        // Suggest the next tool to call to continue the conversation flow
+        suggested_next_action: {
+            tool_name: "getProjectDetails",
+            reason: "Show information about the newly active property",
+            project_name: project_name
+        },
+        message: `Successfully updated active project to ${project_name}. Now getting project details...`
     };
 }; 

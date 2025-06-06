@@ -1249,9 +1249,9 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
        // This is what enables the microphone to automatically detect when user starts/stops speaking
        const turnDetection = !micMuted ? {
            type: "server_vad",
-           threshold: 0.8,
+           threshold: 0.9, // Increased from 0.8 to 0.9 (higher = less sensitive to background noise)
            prefix_padding_ms: 250,
-           silence_duration_ms: 400,
+           silence_duration_ms: 800, // Increased from 400ms to 800ms (requires longer silence before ending turn)
            create_response: true,
        } : null;
 
@@ -1313,9 +1313,9 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
     // Configure turn detection based on current mic state
     const turnDetection = !micMuted ? {
       type: "server_vad",
-      threshold: 0.8,
+      threshold: 0.9, // Increased from 0.8 to 0.9 (higher = less sensitive to background noise)
       prefix_padding_ms: 250,
-      silence_duration_ms: 400,
+      silence_duration_ms: 800, // Increased from 400ms to 800ms (requires longer silence before ending turn)
       create_response: true,
     } : null;
 

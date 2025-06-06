@@ -1,5 +1,5 @@
 import { TranscriptItem } from "@/types/types";
-import { incrementQuestionCountAndCheckAuth } from './trackUserMessage';
+import { checkAuthenticationOnly } from './trackUserMessage';
 
 export const getProjectDetails = async ({ project_id, project_name }: { project_id?: string; project_name?: string }, realEstateAgent: any, transcript: TranscriptItem[] = []) => {
     console.log(`[getProjectDetails] Fetching project details: project_id=${project_id || 'none'}, project_name=${project_name || 'none'}`);
@@ -9,7 +9,7 @@ export const getProjectDetails = async ({ project_id, project_name }: { project_
     const isSpecificPropertyRequest = !!(project_id || project_name);
     
     if (isSpecificPropertyRequest) {
-        const authCheck = incrementQuestionCountAndCheckAuth(realEstateAgent, `getProjectDetails: ${project_name || project_id}`);
+        const authCheck = checkAuthenticationOnly(realEstateAgent, 'getProjectDetails');
         
         if (authCheck.needs_authentication) {
             console.log("[getProjectDetails] 🚨 Authentication required - transferring to authentication agent");

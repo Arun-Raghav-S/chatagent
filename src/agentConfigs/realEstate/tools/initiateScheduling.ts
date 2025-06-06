@@ -1,11 +1,11 @@
 import { TranscriptItem } from "@/types/types";
-import { incrementQuestionCountAndCheckAuth } from './trackUserMessage';
+import { checkAuthenticationOnly } from './trackUserMessage';
 
 export const initiateScheduling = async ({}: {}, realEstateAgent: any, transcript: TranscriptItem[] = []) => {
     console.log("[initiateScheduling] User wants to schedule a visit");
     
     // CRITICAL: Check authentication before processing user request
-    const authCheck = incrementQuestionCountAndCheckAuth(realEstateAgent, "initiateScheduling: schedule visit");
+    const authCheck = checkAuthenticationOnly(realEstateAgent, 'initiateScheduling');
     
     if (authCheck.needs_authentication) {
         console.log("[initiateScheduling] 🚨 Authentication required - transferring to authentication agent");

@@ -1,11 +1,11 @@
 import { TranscriptItem } from "@/types/types";
-import { incrementQuestionCountAndCheckAuth } from './trackUserMessage';
+import { checkAuthenticationOnly } from './trackUserMessage';
 
 export const lookupProperty = async ({ query, k = 3 }: { query: string; k?: number }, realEstateAgent: any, transcript: TranscriptItem[] = []) => {
     console.log(`[lookupProperty] Querying edge function: "${query}", k=${k}`);
     
     // CRITICAL: Check authentication before processing user request
-    const authCheck = incrementQuestionCountAndCheckAuth(realEstateAgent, `lookupProperty: ${query}`);
+    const authCheck = checkAuthenticationOnly(realEstateAgent, 'lookupProperty');
     
     if (authCheck.needs_authentication) {
         console.log("[lookupProperty] 🚨 Authentication required - transferring to authentication agent");

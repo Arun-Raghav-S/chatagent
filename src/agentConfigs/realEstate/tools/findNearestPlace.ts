@@ -1,11 +1,11 @@
 import { TranscriptItem } from "@/types/types";
-import { incrementQuestionCountAndCheckAuth } from './trackUserMessage';
+import { checkAuthenticationOnly } from './trackUserMessage';
 
 export const findNearestPlace = async ({ query, reference_property }: { query: string; reference_property: string }, realEstateAgent: any, transcript: TranscriptItem[] = []) => {
     console.log(`[findNearestPlace] Finding nearest place: "${query}" from property "${reference_property}"`);
     
     // CRITICAL: Check authentication before processing user request
-    const authCheck = incrementQuestionCountAndCheckAuth(realEstateAgent, `findNearestPlace: ${query} near ${reference_property}`);
+    const authCheck = checkAuthenticationOnly(realEstateAgent, 'findNearestPlace');
     
     if (authCheck.needs_authentication) {
         console.log("[findNearestPlace] 🚨 Authentication required - transferring to authentication agent");

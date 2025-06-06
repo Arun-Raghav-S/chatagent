@@ -1,5 +1,5 @@
 import { TranscriptItem } from "@/types/types";
-import { incrementQuestionCountAndCheckAuth } from './trackUserMessage';
+import { checkAuthenticationOnly } from './trackUserMessage';
 
 interface PropertyImage {
   url?: string;
@@ -11,7 +11,7 @@ export const getPropertyImages = async ({ property_name, query }: { property_nam
     console.log(`[getPropertyImages] Fetching images for property: ${property_name || 'active property'}, query: ${query || 'none'}`);
     
     // CRITICAL: Check authentication before processing user request
-    const authCheck = incrementQuestionCountAndCheckAuth(realEstateAgent, `getPropertyImages: ${property_name || query || 'property images'}`);
+    const authCheck = checkAuthenticationOnly(realEstateAgent, 'getPropertyImages');
     
     if (authCheck.needs_authentication) {
         console.log("[getPropertyImages] 🚨 Authentication required - transferring to authentication agent");

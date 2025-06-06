@@ -1,11 +1,11 @@
 import { TranscriptItem } from "@/types/types";
-import { incrementQuestionCountAndCheckAuth } from './trackUserMessage';
+import { checkAuthenticationOnly } from './trackUserMessage';
 
 export const calculateRoute = async ({ origin, destination_property }: { origin: string; destination_property: string }, realEstateAgent: any, transcript: TranscriptItem[] = []) => {
     console.log(`[calculateRoute] Calculating route from "${origin}" to "${destination_property}"`);
     
     // CRITICAL: Check authentication before processing user request
-    const authCheck = incrementQuestionCountAndCheckAuth(realEstateAgent, `calculateRoute: ${origin} to ${destination_property}`);
+    const authCheck = checkAuthenticationOnly(realEstateAgent, 'calculateRoute');
     
     if (authCheck.needs_authentication) {
         console.log("[calculateRoute] 🚨 Authentication required - transferring to authentication agent");

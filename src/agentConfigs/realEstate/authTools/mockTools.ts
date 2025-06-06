@@ -2,11 +2,16 @@ import { AgentConfig } from "@/types/types";
 
 // Mock tools from other agents to prevent "tool not found" if LLM miscalls
 export const trackUserMessage = async ({ message }: { message: string }, agent: AgentConfig) => {
-  console.log("[Authentication] Received trackUserMessage call (ignoring):", message);
+  console.log("🚨🚨🚨 [AUTH AGENT ERROR] trackUserMessage called by authentication agent - THIS SHOULD NOT HAPPEN!");
+  console.log("[Authentication] Message that triggered trackUserMessage:", message);
+  console.log("[Authentication] Agent name:", agent.name);
+  console.log("[Authentication] Agent instructions preview:", agent.instructions?.substring(0, 200) + "...");
+  
   return { 
     success: true, 
-    message: "Authentication agent acknowledges message", 
-    ui_display_hint: 'VERIFICATION_FORM'  // Keep verification form active
+    message: "Authentication agent incorrectly called trackUserMessage", 
+    ui_display_hint: 'VERIFICATION_FORM',  // Keep verification form active
+    error: "Authentication agent should not call trackUserMessage"
   };
 };
 
