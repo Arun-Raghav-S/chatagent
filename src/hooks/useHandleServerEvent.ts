@@ -139,6 +139,9 @@ export function useHandleServerEvent({
   const isTransferringAgentRef = useRef(false);
   const agentBeingTransferredToRef = useRef<string | null>(null); // Added ref
 
+  // Track scheduling context across function calls
+  const lastDetectionResultRef = useRef<{isScheduleRequest?: boolean, detectedProperty?: string} | null>(null);
+
   const handleFunctionCall = async (functionCallParams: {
     name: string;
     call_id?: string;
@@ -241,6 +244,15 @@ export function useHandleServerEvent({
         let fnResult = await toolFunction(args, transcriptItems || []);
         console.log(`[handleFunctionCall] Tool "${functionCallParams.name}" result:`, fnResult);
         
+        // Store scheduling detection results for use in subsequent calls
+        if (functionCallParams.name === 'detectPropertyInMessage' && fnResult) {
+          lastDetectionResultRef.current = {
+            isScheduleRequest: fnResult.isScheduleRequest,
+            detectedProperty: fnResult.detectedProperty
+          };
+          console.log(`🔍 [SCHEDULING CONTEXT] Stored detection result:`, lastDetectionResultRef.current);
+        }
+        
         // 🚨 COMPREHENSIVE FUNCTION RESULT LOGGING
         console.log(`✅ [FUNCTION COMPLETED] ${selectedAgentName.toUpperCase()}.${functionName}() finished`);
         if (fnResult) {
@@ -297,8 +309,69 @@ export function useHandleServerEvent({
           }
         }
 
-        // CRITICAL: Handle suggested_next_action from updateActiveProject to continue tool chain
-        if (fnResult && fnResult.suggested_next_action) {
+        // CRITICAL: Check if this is part of a scheduling flow BEFORE handling suggested_next_action
+        const isSchedulingFlow = functionCallParams.name === 'updateActiveProject' && 
+                                 transcriptItems && transcriptItems.length > 0 &&
+                                 transcriptItems[transcriptItems.length - 1]?.text?.toLowerCase().includes('schedule') ||
+                                 transcriptItems[transcriptItems.length - 1]?.text?.toLowerCase().includes('book') ||
+                                 transcriptItems[transcriptItems.length - 1]?.text?.toLowerCase().includes('visit') ||
+                                 transcriptItems[transcriptItems.length - 1]?.text?.toLowerCase().includes('appointment');
+
+        // Check the most recent detectPropertyInMessage result for scheduling intent
+        let wasScheduleRequest = false;
+        if (functionCallParams.name === 'updateActiveProject') {
+          // First priority: Check stored detection result from the previous detectPropertyInMessage call
+          if (lastDetectionResultRef.current?.isScheduleRequest === true) {
+            wasScheduleRequest = true;
+            console.log(`🔍 [SCHEDULING DETECTION] ✅ Using stored detection result: isScheduleRequest = true`);
+          } else {
+            // Fallback: Look for recent scheduling detection in the conversation context
+            // This is a more reliable way to detect if we're in a scheduling flow
+            const recentTranscript = transcriptItems?.slice(-5) || []; // Check last 5 items
+            wasScheduleRequest = recentTranscript.some(item => 
+              item.text && item.role === 'user' && (
+                item.text.toLowerCase().includes('schedule') ||
+                item.text.toLowerCase().includes('book') ||
+                item.text.toLowerCase().includes('visit') ||
+                item.text.toLowerCase().includes('appointment') ||
+                item.text.toLowerCase().includes('tour')
+              )
+            );
+            
+            console.log(`🔍 [SCHEDULING DETECTION] Checking if updateActiveProject is part of scheduling flow:`);
+            console.log(`🔍 [SCHEDULING DETECTION] Recent user messages:`, recentTranscript.filter(item => item.role === 'user').map(item => item.text));
+            console.log(`🔍 [SCHEDULING DETECTION] Scheduling intent detected: ${wasScheduleRequest}`);
+          }
+        }
+
+        if (wasScheduleRequest && functionCallParams.name === 'updateActiveProject') {
+          console.log("🚨🚨🚨 [SCHEDULING FLOW] updateActiveProject completed in scheduling context - calling initiateScheduling instead of suggested action");
+          
+          // Clear the stored detection result since we're using it now
+          lastDetectionResultRef.current = null;
+          
+          // Get the current agent and call initiateScheduling immediately
+          const currentAgent = selectedAgentConfigSet?.find(a => a.name === selectedAgentName);
+          const initiateSchedulingTool = currentAgent?.toolLogic?.initiateScheduling;
+          
+          if (typeof initiateSchedulingTool === 'function') {
+            try {
+              const schedulingResult = await initiateSchedulingTool({}, transcriptItems || []);
+              console.log("🚨🚨🚨 [SCHEDULING FLOW] initiateScheduling result:", schedulingResult);
+              
+              // Process the scheduling result like any other tool result
+              if (schedulingResult && schedulingResult.destination_agent) {
+                // This should transfer to scheduleMeeting agent
+                fnResult = schedulingResult; // Replace fnResult with scheduling result
+                console.log("🚨🚨🚨 [SCHEDULING FLOW] Proceeding with transfer to scheduling agent");
+              }
+            } catch (error) {
+              console.error("🚨🚨🚨 [SCHEDULING FLOW] Error calling initiateScheduling:", error);
+            }
+          }
+        } else if (fnResult && fnResult.suggested_next_action) {
+          // CRITICAL: Handle suggested_next_action from updateActiveProject to continue tool chain
+          // Only execute suggested actions if NOT in a scheduling flow
           console.log("[handleFunctionCall] Received suggested_next_action:", fnResult.suggested_next_action);
           
           const suggestedAction = fnResult.suggested_next_action;
@@ -728,8 +801,8 @@ export function useHandleServerEvent({
                   }
                 }, 200);
               } else if (newAgentConfig && newAgentConfig.name === "realEstate" && (fnResult.flow_context === "from_scheduling_verification" || (newAgentPreparedMetadata as any).flow_context === "from_scheduling_verification")) {
-                // Simple handling for return to realEstate after scheduling
-                console.log("[handleFunctionCall] realEstate agent transfer after scheduling - will auto-call completeScheduling");
+                // ENHANCED handling for return to realEstate after scheduling - DIRECTLY call completeScheduling
+                console.log("🚨🚨🚨 [handleFunctionCall] realEstate agent transfer after scheduling - DIRECTLY calling completeScheduling");
                 
                 // Clear the flow context to prevent loops
                 if (newAgentConfig.metadata) {
@@ -737,52 +810,105 @@ export function useHandleServerEvent({
                   console.log("[handleFunctionCall] Cleared flow_context from realEstate agent metadata");
                 }
                 
-                // Check if there's a trigger message to send
-                const triggerMessage = fnResult.trigger_message || (newAgentPreparedMetadata as any).trigger_message;
-                
-                if (triggerMessage) {
-                  console.log(`🚨🚨🚨 [handleFunctionCall] Sending trigger message after scheduling transfer: "${triggerMessage}"`);
+                // DIRECT APPROACH: Call completeScheduling immediately instead of relying on trigger messages
+                setTimeout(() => {
+                  // Cancel any active response first
+                  if (hasActiveResponseRef.current) {
+                    console.log("🚨🚨🚨 [handleFunctionCall] Cancelling active response before calling completeScheduling");
+                    sendClientEvent({ type: "response.cancel" }, "(cancelling before completeScheduling)");
+                    hasActiveResponseRef.current = false;
+                  }
                   
+                  // Wait for cancellation to process, then call completeScheduling directly
                   setTimeout(() => {
-                    // Cancel any active response first
-                    if (hasActiveResponseRef.current) {
-                      console.log("[handleFunctionCall] Cancelling active response before sending trigger message");
-                      sendClientEvent({ type: "response.cancel" }, "(cancelling before trigger message)");
-                      hasActiveResponseRef.current = false;
-                    }
+                    console.log("🚨🚨🚨 [handleFunctionCall] Calling completeScheduling DIRECTLY");
                     
-                    // Wait for cancellation to process
-                    setTimeout(() => {
-                      const triggerMessageId = generateSafeId();
-                      console.log(`🚨🚨🚨 [handleFunctionCall] Sending trigger message as user message: "${triggerMessage}"`);
+                    // Get the completeScheduling tool and call it directly
+                    const completeSchedulingTool = newAgentConfig?.toolLogic?.completeScheduling;
+                    console.log("🚨🚨🚨 [handleFunctionCall] Checking completeScheduling tool:", {
+                      toolExists: !!completeSchedulingTool,
+                      toolType: typeof completeSchedulingTool,
+                      agentName: newAgentConfig?.name,
+                      availableTools: Object.keys(newAgentConfig?.toolLogic || {})
+                    });
+                    
+                    if (typeof completeSchedulingTool === 'function') {
+                      console.log("🚨🚨🚨 [handleFunctionCall] Calling completeScheduling with agent:", newAgentConfig.name);
                       
-                      sendClientEvent({
-                        type: "conversation.item.create",
-                        item: {
-                          id: triggerMessageId,
-                          type: "message",
-                          role: "user",
-                          content: [{ type: "input_text", text: triggerMessage }]
+                      completeSchedulingTool({}, transcriptItems || []).then((result: any) => {
+                        console.log("🚨🚨🚨 [handleFunctionCall] Direct completeScheduling result:", result);
+                        
+                        if (result && result.message) {
+                          const newMessageId = generateSafeId();
+                          console.log("🚨🚨🚨 [handleFunctionCall] Adding booking confirmation message to conversation");
+                          
+                          sendClientEvent({
+                            type: "conversation.item.create", 
+                            item: {
+                              id: newMessageId,
+                              type: "message",
+                              role: "assistant",
+                              content: [{ type: "text", text: result.message }]
+                            }
+                          }, "(booking confirmation message)");
+                          
+                          // Handle UI display hint if present
+                          if (result.ui_display_hint === 'BOOKING_CONFIRMATION' && result.booking_details) {
+                            console.log("🚨🚨🚨 [handleFunctionCall] Setting BOOKING_CONFIRMATION UI mode with details:", result.booking_details);
+                            setActiveDisplayMode('BOOKING_CONFIRMATION');
+                            if (setBookingDetails) {
+                              setBookingDetails(result.booking_details);
+                            }
+                            
+                            // Transition back to CHAT after showing booking details
+                            setTimeout(() => {
+                              console.log("🚨🚨🚨 [handleFunctionCall] Transitioning from BOOKING_CONFIRMATION to CHAT");
+                              setActiveDisplayMode('CHAT');
+                            }, 15000);
+                          } else {
+                            console.log("🚨🚨🚨 [handleFunctionCall] No booking details in result, setting CHAT mode");
+                            setActiveDisplayMode('CHAT');
+                          }
+                        } else {
+                          console.error("🚨🚨🚨 [handleFunctionCall] completeScheduling returned no message:", result);
+                          // Still clear the scheduling form even if there's no message
+                          setActiveDisplayMode('CHAT');
+                          
+                          // Add a fallback message
+                          const fallbackMessageId = generateSafeId();
+                          sendClientEvent({
+                            type: "conversation.item.create", 
+                            item: {
+                              id: fallbackMessageId,
+                              type: "message",
+                              role: "assistant",
+                              content: [{ type: "text", text: "Your visit has been scheduled successfully! You'll receive confirmation details shortly." }]
+                            }
+                          }, "(fallback booking message)");
                         }
-                      }, "(auto-trigger message after scheduling)");
-                      
-                      // Trigger response to process the trigger message
-                      setTimeout(() => {
-                        console.log(`🚨🚨🚨 [handleFunctionCall] Triggering response for trigger message`);
-                        sendClientEvent({ type: "response.create" }, "(trigger response for scheduling trigger)");
-                      }, 100);
-                    }, 200);
-                  }, 300);
-                } else {
-                  console.log("[handleFunctionCall] Transfer complete - realEstate agent should auto-call completeScheduling");
-                  // Still trigger a response even without a trigger message
-                  setTimeout(() => {
-                    if (!hasActiveResponseRef.current) {
-                      console.log("[handleFunctionCall] Triggering response for scheduling transfer without trigger message");
-                      sendClientEvent({ type: "response.create" }, "(trigger response after scheduling transfer)");
+                      }).catch((error: any) => {
+                        console.error("🚨🚨🚨 [handleFunctionCall] Error calling completeScheduling directly:", error);
+                        setActiveDisplayMode('CHAT');
+                        
+                        // Add a fallback message even on error
+                        const errorFallbackMessageId = generateSafeId();
+                        sendClientEvent({
+                          type: "conversation.item.create", 
+                          item: {
+                            id: errorFallbackMessageId,
+                            type: "message",
+                            role: "assistant",
+                            content: [{ type: "text", text: "Your visit has been scheduled! You'll receive confirmation details shortly." }]
+                          }
+                        }, "(error fallback booking message)");
+                      });
+                    } else {
+                      console.error("🚨🚨🚨 [handleFunctionCall] completeScheduling tool not found on realEstate agent");
+                      console.error("🚨🚨🚨 [handleFunctionCall] Available tools:", Object.keys(newAgentConfig?.toolLogic || {}));
+                      setActiveDisplayMode('CHAT');
                     }
-                  }, 300);
-                }
+                  }, 200);
+                }, 300);
               } else if (newAgentConfig && newAgentConfig.name === "realEstate" && (fnResult.flow_context === "from_question_auth" || (newAgentPreparedMetadata as any).flow_context === "from_question_auth")) {
                 // Special handling for return to realEstate after authentication with pending question
                 console.log("[handleFunctionCall] realEstate agent transfer after authentication - SENDING pending question immediately");
