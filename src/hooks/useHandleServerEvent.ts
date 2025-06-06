@@ -751,13 +751,8 @@ export function useHandleServerEvent({
                 
                 if (pendingQuestion) {
                   console.log(`🚨🚨🚨 [AUTO PENDING] Sending pending question automatically: "${pendingQuestion}"`);
-                  
-                  // Clear the flow context and pending question from metadata to prevent loops
-                  if (newAgentConfig.metadata) {
-                    delete (newAgentConfig.metadata as any).flow_context;
-                    delete (newAgentConfig.metadata as any).pending_question;
-                    console.log("[handleFunctionCall] Cleared flow_context and pending_question from realEstate agent metadata");
-                  }
+                  console.log(`🚨🚨🚨 [AUTO PENDING] This should prevent chat.tsx from sending simulated "hi"`);
+                  console.log(`🚨🚨🚨 [AUTO PENDING] Keeping flow_context in metadata until AFTER pending question is sent`);
                   
                   // Send the pending question automatically
                   setTimeout(() => {
@@ -782,6 +777,22 @@ export function useHandleServerEvent({
                           content: [{ type: "input_text", text: pendingQuestion }]
                         }
                       }, "(auto-pending question after authentication)");
+                      
+                      // Clear the flow context and pending question from metadata AFTER sending
+                      // This prevents chat.tsx from seeing empty metadata and sending simulated "hi"
+                      if (newAgentConfig.metadata) {
+                        delete (newAgentConfig.metadata as any).flow_context;
+                        delete (newAgentConfig.metadata as any).pending_question;
+                        console.log("[handleFunctionCall] Cleared flow_context and pending_question AFTER sending pending question");
+                      }
+                      
+                      // Also update the agent metadata state to keep it in sync
+                      setAgentMetadata(prevMetadata => {
+                        const updated = { ...prevMetadata } as any;
+                        delete updated.flow_context;
+                        delete updated.pending_question;
+                        return updated;
+                      });
                       
                       // Trigger response to the pending question
                       setTimeout(() => {

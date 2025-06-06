@@ -1591,6 +1591,14 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
                        // Only send "hi" on true initial load (no flow context)
                        const isInitialAgentLoad = !(agentMetadata as ExtendedAgentMetadata)?.flow_context;
 
+                       console.log(`🔍 [Effect] Flow context debug:`, {
+                           agentName: selectedAgentName,
+                           flow_context: (agentMetadata as ExtendedAgentMetadata)?.flow_context,
+                           pending_question: (agentMetadata as ExtendedAgentMetadata)?.pending_question,
+                           isReturningToRealEstateAfterQuestionAuth,
+                           isInitialAgentLoad
+                       });
+
                        const shouldSendSimulatedHi = !agentAutoTriggersFirstAction && 
                                                     !isReturningToRealEstateAfterVerification && 
                                                     !isReturningToRealEstateAfterQuestionAuth &&
@@ -1620,7 +1628,12 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
                                } as ExtendedAgentMetadata));
                            }, 500);
                        } else {
-                           updateSession(shouldSendSimulatedHi);
+                           // CRITICAL: Don't send simulated "hi" if pending question will be sent by useHandleServerEvent
+                           const willReceivePendingQuestion = isReturningToRealEstateAfterQuestionAuth;
+                           const finalShouldSendHi = shouldSendSimulatedHi && !willReceivePendingQuestion;
+                           
+                           console.log(`[Effect] Final decision - sending simulated 'hi': ${finalShouldSendHi} (original: ${shouldSendSimulatedHi}, willReceivePending: ${willReceivePendingQuestion})`);
+                           updateSession(finalShouldSendHi);
                        }
                        
                        // Initialize mic state after session is updated (since mic starts unmuted)
