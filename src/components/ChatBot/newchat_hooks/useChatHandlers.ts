@@ -3,6 +3,36 @@ import { SessionStatus, AgentConfig } from "@/types/types"
 import { generateSafeId } from "../newchat_utils"
 import { PropertyProps } from "../newchat_types"
 
+// Helper function to determine if a message should be hidden from UI
+const shouldHideUIMessage = (text: string): boolean => {
+  return (
+    // OTP verification messages
+    text.toLowerCase().includes('verification code') ||
+    text.toLowerCase().includes('my code is') ||
+    text.toLowerCase().includes('otp is') ||
+    /verification code is \d{4,6}/.test(text.toLowerCase()) ||
+    /my verification code is \d{4,6}/.test(text.toLowerCase()) ||
+    
+    // Verification form submission messages
+    /my name is .+ and my phone number is .+/i.test(text) ||
+    (text.toLowerCase().includes('my name is') && text.toLowerCase().includes('phone number is')) ||
+    
+    // Time slot selection messages
+    /^selected .+ at .+\.?$/i.test(text) ||
+    /^selected .+\.?$/i.test(text) ||
+    text.toLowerCase().startsWith('selected ') ||
+    
+    // Schedule visit request messages
+    text.toLowerCase().includes('schedule a visit for') ||
+    text.toLowerCase().includes('book an appointment') ||
+    /yes, i'd like to schedule a visit for .+/i.test(text) ||
+    
+    // Generic UI interaction patterns
+    text.toLowerCase().includes('please help me book') ||
+    text.toLowerCase().includes('i would like to schedule')
+  );
+};
+
 interface UseChatHandlersProps {
   sessionStatus: SessionStatus
   dcRef: React.MutableRefObject<RTCDataChannel | null>
@@ -136,7 +166,10 @@ export function useChatHandlers({
       { type: "response.create" },
       "(trigger response after schedule request)"
     )
-    addTranscriptMessage(userMessageId, "user", scheduleMessage)
+    // Don't add schedule request messages to transcript - they're UI-generated
+    if (!shouldHideUIMessage(scheduleMessage)) {
+      addTranscriptMessage(userMessageId, "user", scheduleMessage)
+    }
     setSelectedPropertyDetails(null)
   }
 
@@ -185,7 +218,10 @@ export function useChatHandlers({
             "(clearing audio buffer)"
           )
           setTimeout(() => {
-            addTranscriptMessage(userMessageId, "user", selectionMessage)
+            // Don't add time slot selection messages to transcript - they're UI-generated
+            if (!shouldHideUIMessage(selectionMessage)) {
+              addTranscriptMessage(userMessageId, "user", selectionMessage)
+            }
             sendClientEvent(
               {
                 type: "conversation.item.create",
@@ -206,7 +242,10 @@ export function useChatHandlers({
             }, 150)
           }, 250)
         } else {
-          addTranscriptMessage(userMessageId, "user", selectionMessage)
+          // Don't add time slot selection messages to transcript - they're UI-generated
+          if (!shouldHideUIMessage(selectionMessage)) {
+            addTranscriptMessage(userMessageId, "user", selectionMessage)
+          }
           sendClientEvent(
             {
               type: "conversation.item.create",
@@ -246,7 +285,10 @@ export function useChatHandlers({
       setVerificationData((prev: any) => ({ ...prev, name, phone }))
       const userMessageId = generateSafeId()
       const detailsMessage = `My name is ${name} and my phone number is ${phone}.`
-      addTranscriptMessage(userMessageId, "user", detailsMessage)
+      // Don't add verification form messages to transcript - they're UI-generated
+      if (!shouldHideUIMessage(detailsMessage)) {
+        addTranscriptMessage(userMessageId, "user", detailsMessage)
+      }
       sendClientEvent(
         {
           type: "conversation.item.create",
@@ -280,7 +322,10 @@ export function useChatHandlers({
       console.log(`[UI] User submitted OTP: ${otp}`)
       const userMessageId = generateSafeId()
       const otpMessage = `My verification code is ${otp}.`
-      addTranscriptMessage(userMessageId, "user", otpMessage)
+      // Don't add OTP messages to transcript - they're UI-generated
+      if (!shouldHideUIMessage(otpMessage)) {
+        addTranscriptMessage(userMessageId, "user", otpMessage)
+      }
       sendClientEvent(
         {
           type: "conversation.item.create",

@@ -141,6 +141,9 @@ export function useHandleServerEvent({
 
   // Track scheduling context across function calls
   const lastDetectionResultRef = useRef<{isScheduleRequest?: boolean, detectedProperty?: string} | null>(null);
+  
+  // Track pending questions that should be filtered from UI
+  const pendingQuestionsToFilterRef = useRef<Set<string>>(new Set());
 
   const handleFunctionCall = async (functionCallParams: {
     name: string;
@@ -918,6 +921,12 @@ export function useHandleServerEvent({
                 if (pendingQuestion) {
                   console.log(`🚨🚨🚨 [PENDING QUESTION] Sending pending question immediately: "${pendingQuestion}"`);
                   
+                  // Store the pending question for filtering from UI
+                  if (pendingQuestion && pendingQuestion.trim()) {
+                    pendingQuestionsToFilterRef.current.add(pendingQuestion.trim());
+                    console.log(`🔍 [PENDING QUESTION] Added to filter list: "${pendingQuestion.trim()}"`);
+                  }
+                  
                   // Clear the flow context to prevent loops
                   if (newAgentConfig.metadata) {
                     delete (newAgentConfig.metadata as any).flow_context;
@@ -1300,9 +1309,15 @@ export function useHandleServerEvent({
                     setActiveDisplayMode('VERIFICATION_FORM');
                     
                     console.log(`🚨🚨🚨 [AUTH TRIGGER] ✅ SWITCHED TO AUTHENTICATION AGENT`);
-                    console.log(`🚨🚨🚨 [AUTH TRIGGER] Pending question: "${text}"`);
-                    
-                    // Send simulated message to trigger authentication flow
+                                      console.log(`🚨🚨🚨 [AUTH TRIGGER] Pending question: "${text}"`);
+                  
+                  // Store the pending question for filtering
+                  if (text && text.trim()) {
+                    pendingQuestionsToFilterRef.current.add(text.trim());
+                    console.log(`🔍 [PENDING QUESTION] Added to filter list: "${text.trim()}"`);
+                  }
+                  
+                  // Send simulated message to trigger authentication flow
                     setTimeout(() => {
                       const simulatedAuthMessageId = generateSafeId();
                       console.log(`🚨🚨🚨 [AUTH TRIGGER] Sending simulated auth message`);
@@ -1356,17 +1371,47 @@ export function useHandleServerEvent({
           break; // Don't add OTP messages to the visible transcript
         }
 
-        // Filter out OTP verification messages from transcript
-        if (role === "user" && (
-          text.toLowerCase().includes('verification code') ||
-          text.toLowerCase().includes('my code is') ||
-          text.toLowerCase().includes('otp is') ||
-          /verification code is \d{4,6}/.test(text.toLowerCase()) ||
-          /my verification code is \d{4,6}/.test(text.toLowerCase()) ||
-          /\b\d{4,6}\b/.test(text) && selectedAgentName === 'authentication'
-        )) {
-          console.log(`[Transcript] Filtering OTP verification message from transcript: "${text}"`);
-          break; // Don't add OTP messages to the visible transcript
+        // Filter out all UI-generated messages from transcript
+        if (role === "user") {
+          const shouldFilter = 
+            // OTP verification messages
+            text.toLowerCase().includes('verification code') ||
+            text.toLowerCase().includes('my code is') ||
+            text.toLowerCase().includes('otp is') ||
+            /verification code is \d{4,6}/.test(text.toLowerCase()) ||
+            /my verification code is \d{4,6}/.test(text.toLowerCase()) ||
+            (/\b\d{4,6}\b/.test(text) && selectedAgentName === 'authentication') ||
+            
+            // Verification form submission messages
+            /my name is .+ and my phone number is .+/i.test(text) ||
+            text.toLowerCase().includes('my name is') && text.toLowerCase().includes('phone number is') ||
+            
+            // Time slot selection messages
+            /^selected .+ at .+\.?$/i.test(text) ||
+            /^selected .+\.?$/i.test(text) ||
+            text.toLowerCase().startsWith('selected ') ||
+            
+            // Schedule visit request messages
+            text.toLowerCase().includes('schedule a visit for') ||
+            text.toLowerCase().includes('book an appointment') ||
+            /yes, i'd like to schedule a visit for .+/i.test(text) ||
+            
+            // Generic UI interaction patterns
+            text.toLowerCase().includes('please help me book') ||
+            text.toLowerCase().includes('i would like to schedule') ||
+            
+            // Any message that looks like it's from a form or UI interaction
+            (text.includes('.') && (
+              text.toLowerCase().includes('selected') ||
+              text.toLowerCase().includes('my ') ||
+              text.toLowerCase().includes('verification') ||
+              text.toLowerCase().includes('schedule')
+            ));
+
+          if (shouldFilter) {
+            console.log(`[Transcript] Filtering UI-generated message from transcript: "${text}"`);
+            break; // Don't add UI-generated messages to the visible transcript
+          }
         }
 
         // Filter out pending questions from transcript - they should be processed but not shown to user
@@ -1374,6 +1419,19 @@ export function useHandleServerEvent({
             text === "I need to verify my details")) {
           console.log(`[Transcript] Filtering internal/pending question from transcript: "${text}"`);
           break; // Don't add internal messages to the visible transcript
+        }
+
+        // Filter out pending questions that are sent after authentication
+        // These are real user questions that were stored and replayed, but we don't want to show them twice
+        // IMPORTANT: Don't filter pending questions entirely - they need to reach the agent for processing
+        // Instead, we'll handle UI filtering in the transcript display component
+        if (role === "user" && text && pendingQuestionsToFilterRef.current.has(text.trim())) {
+          console.log(`[Transcript] Found pending question, allowing agent processing but marking for UI filtering: "${text}"`);
+          // Remove from filter set after finding (one-time use)
+          pendingQuestionsToFilterRef.current.delete(text.trim());
+          console.log(`[Transcript] Removed from pending filter list: "${text.trim()}"`);
+          // Allow the message to continue to the agent for processing
+          // UI filtering will be handled elsewhere
         }
 
         // Filter out TRIGGER_BOOKING_CONFIRMATION from transcript - it's an internal trigger
@@ -1670,6 +1728,12 @@ export function useHandleServerEvent({
                   
                   console.log(`🚨🚨🚨 [AUTH TRIGGER] ✅ SWITCHED TO AUTHENTICATION AGENT`);
                   console.log(`🚨🚨🚨 [AUTH TRIGGER] Pending question: "${finalTranscript}"`);
+                  
+                  // Store the pending question for filtering
+                  if (finalTranscript && finalTranscript.trim()) {
+                    pendingQuestionsToFilterRef.current.add(finalTranscript.trim());
+                    console.log(`🔍 [PENDING QUESTION] Added to filter list: "${finalTranscript.trim()}"`);
+                  }
                   
                   // Send simulated message to trigger authentication flow
                   setTimeout(() => {

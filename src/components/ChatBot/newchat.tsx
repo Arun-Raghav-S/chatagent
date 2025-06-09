@@ -51,6 +51,48 @@ import {
   ExtendedAgentMetadata,
 } from "./newchat_types"
 
+// Helper function to determine if a message should be hidden from UI (pending questions, UI-generated messages, etc.)
+const shouldHideFromUI = (text: string, agentName?: string): boolean => {
+  if (!text) return false;
+  
+  // Hide UI-generated messages (form submissions, etc.)
+  const isUIGenerated = (
+    // OTP verification messages
+    text.toLowerCase().includes('verification code') ||
+    text.toLowerCase().includes('my code is') ||
+    text.toLowerCase().includes('otp is') ||
+    /verification code is \d{4,6}/.test(text.toLowerCase()) ||
+    /my verification code is \d{4,6}/.test(text.toLowerCase()) ||
+    
+    // Verification form submission messages
+    /my name is .+ and my phone number is .+/i.test(text) ||
+    (text.toLowerCase().includes('my name is') && text.toLowerCase().includes('phone number is')) ||
+    
+    // Time slot selection messages
+    /^selected .+ at .+\.?$/i.test(text) ||
+    /^selected .+\.?$/i.test(text) ||
+    text.toLowerCase().startsWith('selected ') ||
+    
+    // Schedule visit request messages
+    text.toLowerCase().includes('schedule a visit for') ||
+    text.toLowerCase().includes('book an appointment') ||
+    /yes, i'd like to schedule a visit for .+/i.test(text)
+  );
+  
+  // Hide pending questions that are being replayed after authentication
+  // These are questions that were asked before authentication and are now being sent to the agent
+  const isPendingQuestion = agentName === 'realEstate' && (
+    text.toLowerCase().includes('show me') ||
+    text.toLowerCase().includes('what is') ||
+    text.toLowerCase().includes('tell me') ||
+    text.toLowerCase().includes('location') ||
+    text.toLowerCase().includes('price') ||
+    text.toLowerCase().includes('details')
+  );
+  
+  return isUIGenerated || isPendingQuestion;
+};
+
 export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
   // --- State Declarations ---
   const [sessionStatus, setSessionStatus] =
@@ -103,6 +145,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
   const handleServerEventRef = useRef<(event: any) => void>(() => {})
   const hasShownSuccessMessageRef = useRef<boolean>(false)
   const pendingQuestionProcessedRef = useRef<boolean>(false)
+  const hasEverSentInitialHiRef = useRef<boolean>(false)
 
   // --- Custom Hooks (Ordered to resolve dependencies) ---
 
@@ -361,29 +404,37 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
   
             const isInitialAgentLoad = !(agentMetadata as ExtendedAgentMetadata)?.flow_context;
   
-            const shouldSendSimulatedHi = !agentAutoTriggersFirstAction &&
-              !isReturningToRealEstateAfterVerification &&
-              !isReturningToRealEstateAfterQuestionAuth &&
-              isInitialAgentLoad;
+                      const shouldSendSimulatedHi = !agentAutoTriggersFirstAction &&
+            !isReturningToRealEstateAfterVerification &&
+            !isReturningToRealEstateAfterQuestionAuth &&
+            isInitialAgentLoad &&
+            !hasEverSentInitialHiRef.current;
   
             const shouldSendPendingQuestion = isReturningToRealEstateAfterQuestionAuth;
   
-            if (shouldSendPendingQuestion) {
-              const pendingQuestion = (agentMetadata as ExtendedAgentMetadata).pending_question;
-              updateSession(false);
-              setTimeout(() => {
-                if (pendingQuestion) {
-                  sendSimulatedUserMessage(pendingQuestion);
-                }
-                setAgentMetadata(prev => ({
-                  ...prev,
-                  flow_context: undefined,
-                  pending_question: undefined
-                } as ExtendedAgentMetadata));
-              }, 500);
-            } else {
-              updateSession(shouldSendSimulatedHi);
+                      if (shouldSendPendingQuestion) {
+            const pendingQuestion = (agentMetadata as ExtendedAgentMetadata).pending_question;
+            updateSession(false);
+            setTimeout(() => {
+              if (pendingQuestion) {
+                console.log(`🔍 [PENDING QUESTION] Sending pending question: "${pendingQuestion}"`);
+                // Note: The filtering logic is handled in useHandleServerEvent.ts 
+                // The pending question will be filtered from the UI but processed by the agent
+                sendSimulatedUserMessage(pendingQuestion);
+              }
+              setAgentMetadata(prev => ({
+                ...prev,
+                flow_context: undefined,
+                pending_question: undefined
+              } as ExtendedAgentMetadata));
+            }, 500);
+                      } else {
+            updateSession(shouldSendSimulatedHi);
+            // Mark that we've sent the initial hi message if we did
+            if (shouldSendSimulatedHi) {
+              hasEverSentInitialHiRef.current = true;
             }
+          }
   
             setTimeout(() => {
               updateSessionMicState();
@@ -746,6 +797,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
           </div>
           {activeDisplayMode === 'CHAT' && transcriptItems
             .filter(item => item.type === 'MESSAGE' && item.role === 'user' && item.status !== 'DONE')
+            .filter(item => !shouldHideFromUI(item.text || '', item.agentName))
             .slice(-1)
             .map(item => (
               <div key={item.itemId} className="absolute bottom-20 right-4 max-w-[80%] bg-blue-600 p-3 rounded-xl text-sm text-white rounded-br-none z-20 shadow-lg">

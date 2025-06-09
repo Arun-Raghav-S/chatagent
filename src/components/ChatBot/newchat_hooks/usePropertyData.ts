@@ -252,7 +252,14 @@ export function usePropertyData(
       if (lastUserMessage?.text) {
         const text = lastUserMessage.text.toLowerCase()
 
-        if (lastPropertyQueryRef.current === lastUserMessage.itemId) {
+        // Check if this is a pending question (questions sent after authentication)
+        // Pending questions should be processed even if they have the same itemId
+        const isPendingQuestion = lastUserMessage.agentName === 'realEstate' && 
+                                 (text.includes('show me') || text.includes('location') || 
+                                  text.includes('what is') || text.includes('tell me') ||
+                                  text.includes('price') || text.includes('details'));
+
+        if (lastPropertyQueryRef.current === lastUserMessage.itemId && !isPendingQuestion) {
           console.log("[Effect] Skipping already processed message:", text)
           return
         }
@@ -289,6 +296,13 @@ export function usePropertyData(
           "rent",
           "view",
           "show me",
+          "location",
+          "where is",
+          "address",
+          "map",
+          "directions",
+          "base 101",
+          "base101",
         ]
 
         const containsPropertyKeyword = propertyRelatedKeywords.some(keyword =>
@@ -300,8 +314,21 @@ export function usePropertyData(
             "[Effect] Detected property-related query in user message:",
             text
           )
+          console.log(
+            "[Effect] isPendingQuestion:",
+            isPendingQuestion,
+            "agentName:",
+            lastUserMessage.agentName
+          )
           lastPropertyQueryRef.current = lastUserMessage.itemId
           handleGetAllProperties()
+        } else {
+          console.log(
+            "[Effect] No property keywords found in message:",
+            text,
+            "Keywords checked:",
+            propertyRelatedKeywords
+          )
         }
       }
     }
