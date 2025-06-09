@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from 'next/navigation'; // Import useParams
 import { supabase } from "@/libs/supabaseClient"; // Import the Supabase client
-import RealEstateAgent from "@/components/ChatBot/chat";
+import RealEstateAgent from "@/components/ChatBot/newchat";
 
 // Component no longer receives params prop directly
 export default function ChatPage() {
