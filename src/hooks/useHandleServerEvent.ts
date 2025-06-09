@@ -1375,6 +1375,8 @@ export function useHandleServerEvent({
         if (role === "user") {
           const shouldFilter = 
             // OTP verification messages
+            text === "Hello, I need help with booking a visit. Please show me available dates." ||
+            text.toLowerCase().includes('hello, i need help with booking a visit') ||
             text.toLowerCase().includes('verification code') ||
             text.toLowerCase().includes('my code is') ||
             text.toLowerCase().includes('otp is') ||

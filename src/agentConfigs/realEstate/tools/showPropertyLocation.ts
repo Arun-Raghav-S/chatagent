@@ -169,7 +169,7 @@ export const showPropertyLocation = async ({ property_name }: { property_name?: 
 
       return {
         success: true,
-        message: `Here's the location of ${propertyName}. You can view it on the interactive map.`,
+        message: `Here's the location. You can view it on the interactive map.`,
         ui_display_hint: 'LOCATION_MAP',
         location_data: responseData
       };
