@@ -1197,8 +1197,51 @@ export function useHandleServerEvent({
       }
 
       case "output_audio_buffer.stopped": {
-        // Audio playback stopped
-        // console.log(`[Server Event] Audio playback stopped`);
+        // Audio playback actually stopped - user stopped hearing the agent
+        const currentAgentNameInResponse = selectedAgentName;
+        console.log(`🔊 [AUDIO BUFFER STOPPED] ${currentAgentNameInResponse.toUpperCase()} audio playback stopped`);
+        
+        // This is the perfect time to trigger authentication - when user truly stops hearing the agent
+        if (authenticationTriggeredRef.current && !isTransferringAgentRef.current && currentAgentNameInResponse === 'realEstate') {
+          console.log(`🚨🚨🚨 [BUFFER AUTH] Audio buffer stopped - triggering authentication`);
+          
+          // Find authentication agent
+          const authAgent = selectedAgentConfigSet?.find((a: any) => a.name === 'authentication');
+          const currentAgent = selectedAgentConfigSet?.find(a => a.name === selectedAgentName);
+          
+          if (authAgent && currentAgent) {
+            // Disable mic to prevent new input during transition
+            console.log(`🚨🚨🚨 [MIC CONTROL] Disabling mic for authentication transition`);
+            setMicMuted(true);
+            
+            setTimeout(() => {
+              // Prepare metadata for authentication agent
+              const newAgentMetadata: AgentMetadata = {
+                ...(currentAgent.metadata || {}),
+                ...(authAgent.metadata || {}),
+                // Preserve critical fields
+                chatbot_id: currentAgent.metadata?.chatbot_id || authAgent.metadata?.chatbot_id,
+                org_id: currentAgent.metadata?.org_id || authAgent.metadata?.org_id,
+                session_id: currentAgent.metadata?.session_id || authAgent.metadata?.session_id,
+                language: currentAgent.metadata?.language || authAgent.metadata?.language || "English",
+                // Set authentication context
+                flow_context: 'from_question_auth',
+                came_from: 'realEstate',
+              } as any;
+              
+              authAgent.metadata = newAgentMetadata;
+              
+              // Switch to authentication agent
+              setSelectedAgentName('authentication');
+              setAgentMetadata(newAgentMetadata);
+              setActiveDisplayMode('VERIFICATION_FORM');
+              
+              console.log(`🚨🚨🚨 [BUFFER AUTH] ✅ SWITCHED TO AUTHENTICATION AGENT`);
+              
+              // Mic will be re-enabled when auth UI is ready (in component)
+            }, 200); // Even shorter delay since audio buffer has truly stopped
+          }
+        }
         break;
       }
 
@@ -1688,47 +1731,7 @@ export function useHandleServerEvent({
         console.log(`✅ [RESPONSE COMPLETE] ${currentAgentNameInResponse.toUpperCase()} finished response`);
         console.log(`[Server Event Hook] Response done. Agent: ${currentAgentNameInResponse}. Transferring flag: ${isTransferringAgentRef.current}, Target: ${agentBeingTransferredToRef.current}`);
         
-        // Simple authentication trigger after 2nd question response completes
-        if (authenticationTriggeredRef.current && !isTransferringAgentRef.current && currentAgentNameInResponse === 'realEstate') {
-          console.log(`🚨🚨🚨 [SIMPLE AUTH] Response completed - triggering authentication`);
-          
-          // Find authentication agent
-          const authAgent = selectedAgentConfigSet?.find((a: any) => a.name === 'authentication');
-          const currentAgent = selectedAgentConfigSet?.find(a => a.name === selectedAgentName);
-          
-          if (authAgent && currentAgent) {
-            // Disable mic to prevent new input during transition
-            console.log(`🚨🚨🚨 [MIC CONTROL] Disabling mic for authentication transition`);
-            setMicMuted(true);
-            
-            setTimeout(() => {
-              // Prepare metadata for authentication agent
-              const newAgentMetadata: AgentMetadata = {
-                ...(currentAgent.metadata || {}),
-                ...(authAgent.metadata || {}),
-                // Preserve critical fields
-                chatbot_id: currentAgent.metadata?.chatbot_id || authAgent.metadata?.chatbot_id,
-                org_id: currentAgent.metadata?.org_id || authAgent.metadata?.org_id,
-                session_id: currentAgent.metadata?.session_id || authAgent.metadata?.session_id,
-                language: currentAgent.metadata?.language || authAgent.metadata?.language || "English",
-                // Set authentication context
-                flow_context: 'from_question_auth',
-                came_from: 'realEstate',
-              } as any;
-              
-              authAgent.metadata = newAgentMetadata;
-              
-              // Switch to authentication agent
-              setSelectedAgentName('authentication');
-              setAgentMetadata(newAgentMetadata);
-              setActiveDisplayMode('VERIFICATION_FORM');
-              
-              console.log(`🚨🚨🚨 [SIMPLE AUTH] ✅ SWITCHED TO AUTHENTICATION AGENT`);
-              
-              // Mic will be re-enabled when auth UI is ready (in component)
-            }, 500);
-          }
-        }
+        // Authentication now handled in response.audio.done (when user hears agent stop speaking)
         
         // Log additional response details
         const responseDetails = serverEvent.response as any || {};
@@ -1806,10 +1809,17 @@ export function useHandleServerEvent({
         // console.log(`[Server Event] Audio buffer started for response: ${(serverEvent as any).response_id}`);
         break;
         
-      case "response.audio.done":
+      case "response.audio.done": {
+        // Audio generation complete (but might still be playing locally)
+        const currentAgentNameInResponse = selectedAgentName;
+        console.log(`🔊 [AUDIO GENERATION DONE] ${currentAgentNameInResponse.toUpperCase()} finished generating audio`);
+        // Authentication now handled in output_audio_buffer.stopped (when user stops hearing audio)
+        break;
+      }
+      
       case "response.audio_transcript.done":
-        // Audio playback and transcript are complete
-        // console.log(`[Server Event] Audio playback and transcript are complete`);
+        // Transcript complete (but audio might still be playing)
+        // console.log(`[Server Event] Audio transcript complete`);
         break;
 
       case "session.error": {

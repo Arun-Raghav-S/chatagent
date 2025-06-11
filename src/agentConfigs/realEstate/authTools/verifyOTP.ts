@@ -41,9 +41,9 @@ export const verifyOTP = async (
   if (!otp || !/^\d{6}$/.test(otp)) { // Check for 6 digits
        return { 
            verified: false, // Ensure verified flag is present on failure
-           error: "Invalid OTP format.", 
+           error: "Please enter a valid 6-digit code.", 
            ui_display_hint: 'OTP_FORM', 
-           message: "Please enter the 6-digit code."
+           message: "Please enter the complete 6-digit verification code."
        };
   }
    // Use the phone number from metadata if not explicitly passed or different
@@ -141,10 +141,8 @@ export const verifyOTP = async (
         is_verified: true,
         customer_name: metadataAny?.customer_name || "",
         phone_number: effective_phone_number,
-        silentTransfer: true, // Default to silent for cleaner UX
-        ui_display_hint: 'VERIFICATION_SUCCESS', // Custom hint for success message display
-        verification_success_message: "Verification successful! You're now verified.", // Explicit success message
-        message: "Verification successful! You're now verified.", // Also include in message field
+        silentTransfer: true, // Silent transfer for beautiful UX
+        verified: true, // Explicit verification flag
       };
 
       if (cameFrom === 'scheduling') {
@@ -169,7 +167,6 @@ export const verifyOTP = async (
         destinationAgentName = 'realEstate';
         // NO flow_context for general authentication - just mark user as verified
         // and let them continue with normal conversation flow
-        transferData.message = `Great! You're now verified, ${metadataAny?.customer_name || 'there'}! How can I help you further?`;
         delete transferData.flow_context; // Explicitly ensure no flow context
         // is_verified, customer_name, phone_number are already in transferData
         // has_scheduled is not applicable or should remain as per existing metadata state (likely false/undefined)
@@ -192,13 +189,15 @@ export const verifyOTP = async (
         ...transferData // Spread all other necessary fields for the transfer
       };
     } else {
-      const errorMsg = data.error || data.message || "Invalid OTP or verification failed.";
+      const errorMsg = data.error || data.message || "The code you entered is incorrect.";
       console.error("[verifyOTP] Verification failed:", errorMsg);
       return {
         verified: false,
         error: errorMsg,
         ui_display_hint: 'OTP_FORM', // Stay on OTP form
-        message: `Verification failed: ${errorMsg}`
+        message: errorMsg.includes("Invalid") || errorMsg.includes("incorrect") 
+          ? "The verification code is incorrect. Please try again." 
+          : `Verification failed: ${errorMsg}`
       };
     }
   } catch (error: any) {

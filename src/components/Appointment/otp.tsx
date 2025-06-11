@@ -102,21 +102,21 @@ export default function OTPInput({ onSubmit, onCancel }: OTPInputProps) {
       transition={FAST_TRANSITION}
     >
       <motion.h3 
-        className="text-lg font-semibold mb-3 text-center"
+        className="text-xl font-bold mb-4 text-center"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...FAST_TRANSITION, delay: 0.05 }}
       >
-        Enter Verification Code
+        🔐 Verification Code
       </motion.h3>
       
       <motion.p 
-        className="text-sm mb-6 text-center opacity-90"
+        className="text-sm mb-6 text-center opacity-90 leading-relaxed"
         initial={{ opacity: 0 }}
         animate={{ opacity: 0.9 }}
         transition={{ ...FAST_TRANSITION, delay: 0.1 }}
       >
-        We've sent a 6-digit code to your phone number
+        Enter the 6-digit code we sent to your phone
       </motion.p>
 
       <motion.div 
@@ -137,9 +137,9 @@ export default function OTPInput({ onSubmit, onCancel }: OTPInputProps) {
             value={digit}
             onChange={(e) => handleOtpChange(index, e.target.value)}
             onKeyDown={(e) => handleKeyDown(index, e)}
-            className={`w-12 h-12 text-center text-xl font-bold bg-white text-gray-900 rounded-lg border-2 transition-all duration-100 focus:ring-2 focus:ring-blue-300 ${
-              digit ? 'border-blue-400' : 'border-gray-300'
-            } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`w-12 h-12 text-center text-xl font-bold bg-white text-gray-900 rounded-xl border-2 transition-all duration-200 focus:ring-2 focus:ring-blue-400 focus:border-blue-500 ${
+              digit ? 'border-blue-500 bg-blue-50' : 'border-gray-300'
+            } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'hover:border-blue-400'}`}
             disabled={isSubmitting}
           />
         ))}
@@ -161,27 +161,40 @@ export default function OTPInput({ onSubmit, onCancel }: OTPInputProps) {
         
         <motion.button
           onClick={handleSubmit}
-          className={`w-full sm:flex-1 px-4 py-3 rounded-md transition-all duration-100 active:scale-95 ${
+          className={`w-full sm:flex-1 px-4 py-3 rounded-xl font-semibold transition-all duration-200 ${
             isComplete && !isSubmitting
-              ? 'bg-blue-500 hover:bg-blue-400' 
-              : 'bg-blue-700 opacity-50 cursor-not-allowed'
+              ? 'bg-green-500 hover:bg-green-400 text-white shadow-lg' 
+              : 'bg-blue-700 opacity-50 cursor-not-allowed text-gray-300'
           }`}
           disabled={!isComplete || isSubmitting}
           type="button"
           whileTap={{ scale: isComplete && !isSubmitting ? 0.95 : 1 }}
           whileHover={{ scale: isComplete && !isSubmitting ? 1.02 : 1 }}
         >
-          {isSubmitting ? 'Verifying...' : 'Verify'}
+          {isSubmitting ? (
+            <span className="flex items-center justify-center gap-2">
+              <motion.div 
+                className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+              />
+              Verifying...
+            </span>
+          ) : (
+            <span className="flex items-center justify-center gap-2">
+              ✓ Verify Code
+            </span>
+          )}
         </motion.button>
       </div>
       
-      <motion.p 
+              <motion.p 
         className="text-xs text-center mt-6 opacity-70"
         initial={{ opacity: 0 }}
         animate={{ opacity: 0.7 }}
         transition={{ ...FAST_TRANSITION, delay: 0.2 }}
       >
-        Didn't receive the code? <button className="text-blue-300 underline hover:text-blue-200 transition-colors duration-100">Resend</button>
+        Didn't receive the code? <button className="text-blue-300 underline hover:text-blue-200 transition-colors duration-200 font-medium">Resend Code</button>
       </motion.p>
     </motion.div>
   )
