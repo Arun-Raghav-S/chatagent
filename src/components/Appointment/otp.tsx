@@ -130,14 +130,14 @@ export default function OTPInput({ onSubmit, onCancel }: OTPInputProps) {
 
   return (
     <motion.div
-      className="p-4 bg-[#0b3d91] text-white rounded-xl w-full max-w-md mx-auto"
+      className="p-6 bg-[#0b3d91] text-white rounded-xl w-full max-w-sm mx-auto"
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 15 }}
       transition={FAST_TRANSITION}
     >
       <motion.h3 
-        className="text-xl font-bold mb-4 text-center"
+        className="text-xl font-semibold mb-2 text-center"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...FAST_TRANSITION, delay: 0.05 }}
@@ -172,19 +172,19 @@ export default function OTPInput({ onSubmit, onCancel }: OTPInputProps) {
             value={digit}
             onChange={(e) => handleOtpChange(index, e.target.value)}
             onKeyDown={(e) => handleKeyDown(index, e)}
-            className={`w-12 h-12 text-center text-xl font-bold bg-white text-gray-900 rounded-xl border-2 transition-all duration-200 focus:ring-2 focus:ring-blue-400 focus:border-blue-500 ${
-              digit ? 'border-blue-500 bg-blue-50' : 'border-gray-300'
-            } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'hover:border-blue-400'}`}
+            className={`w-10 h-12 text-center text-lg font-bold bg-white text-gray-900 rounded-lg border-0 transition-all duration-200 focus:ring-2 focus:ring-blue-300 focus:scale-105 ${
+              digit ? 'bg-blue-50 shadow-md' : 'bg-white'
+            } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-50'}`}
             disabled={isSubmitting}
           />
         ))}
       </motion.div>
 
-      <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 px-2">
+      <div className="flex flex-col gap-3">
         {onCancel && (
           <motion.button
             onClick={onCancel}
-            className="w-full sm:flex-1 px-4 py-3 bg-blue-700 hover:bg-blue-600 transition-all duration-100 rounded-md active:scale-95"
+            className="w-full px-4 py-3 bg-blue-700 hover:bg-blue-600 transition-all duration-200 rounded-lg font-medium active:scale-95"
             disabled={isSubmitting}
             type="button"
             whileTap={{ scale: isSubmitting ? 1 : 0.95 }}
@@ -196,9 +196,9 @@ export default function OTPInput({ onSubmit, onCancel }: OTPInputProps) {
         
         <motion.button
           onClick={handleSubmit}
-          className={`w-full sm:flex-1 px-4 py-3 rounded-xl font-semibold transition-all duration-200 ${
+          className={`w-full px-4 py-3 rounded-lg font-semibold transition-all duration-200 ${
             isComplete && !isSubmitting
-              ? 'bg-green-500 hover:bg-green-400 text-white shadow-lg' 
+              ? 'bg-white text-blue-900 hover:bg-blue-50 shadow-lg active:scale-95' 
               : 'bg-blue-700 opacity-50 cursor-not-allowed text-gray-300'
           }`}
           disabled={!isComplete || isSubmitting}
@@ -209,7 +209,7 @@ export default function OTPInput({ onSubmit, onCancel }: OTPInputProps) {
           {isSubmitting ? (
             <span className="flex items-center justify-center gap-2">
               <motion.div 
-                className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
+                className="w-4 h-4 border-2 border-blue-900 border-t-transparent rounded-full"
                 animate={{ rotate: 360 }}
                 transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
               />
@@ -223,8 +223,8 @@ export default function OTPInput({ onSubmit, onCancel }: OTPInputProps) {
         </motion.button>
       </div>
       
-              <motion.p 
-        className="text-xs text-center mt-6 opacity-70"
+      <motion.p 
+        className="text-xs text-center mt-4 opacity-70"
         initial={{ opacity: 0 }}
         animate={{ opacity: 0.7 }}
         transition={{ ...FAST_TRANSITION, delay: 0.2 }}

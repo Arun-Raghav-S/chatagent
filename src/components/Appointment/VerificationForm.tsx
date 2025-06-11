@@ -27,12 +27,12 @@ const childVariants: Variants = {
   visible: { opacity: 1, y: 0, transition: FAST_TRANSITION },
 };
 
-// Country codes data
+// Country codes data - simplified for mobile
 const countryCodes = [
-  { code: "+1", country: "US/Canada" },
-  { code: "+44", country: "UK" },
   { code: "+91", country: "India" },
-  { code: "+61", country: "Australia" },
+  { code: "+1", country: "US/CA" },
+  { code: "+44", country: "UK" },
+  { code: "+61", country: "AU" },
   { code: "+86", country: "China" },
   { code: "+81", country: "Japan" },
   { code: "+49", country: "Germany" },
@@ -42,7 +42,7 @@ const countryCodes = [
   { code: "+34", country: "Spain" },
   { code: "+55", country: "Brazil" },
   { code: "+52", country: "Mexico" },
-  { code: "+65", country: "Singapore" },
+  { code: "+65", country: "SG" },
   { code: "+971", country: "UAE" },
 ].sort((a, b) => a.country.localeCompare(b.country));
 
@@ -99,41 +99,41 @@ const VerificationForm: React.FC<VerificationFormProps> = ({ onSubmit }) => {
       initial="hidden"
       animate="visible"
       exit="exit"
-      className="p-4 bg-[#0b3d91] text-white rounded-xl w-full max-w-md mx-auto"
+      className="p-6 bg-[#0b3d91] text-white rounded-xl w-full max-w-sm mx-auto"
     >
-      <motion.h3 variants={childVariants} className="text-lg font-semibold mb-3 text-center">
+      <motion.h3 variants={childVariants} className="text-xl font-semibold mb-2 text-center">
         Verification Required
       </motion.h3>
-      <motion.p variants={childVariants} className="text-sm mb-4 text-center">
+      <motion.p variants={childVariants} className="text-sm mb-6 text-center opacity-90">
         Please provide your contact details:
       </motion.p>
       
-      <form onSubmit={handleSubmit} className="w-full">
-        <motion.div variants={childVariants} className="mb-3">
-          <label className="block text-sm mb-1">Full Name</label>
+      <form onSubmit={handleSubmit} className="w-full space-y-4">
+        <motion.div variants={childVariants}>
+          <label className="block text-sm font-medium mb-2">Full Name</label>
           <input
             type="text"
             value={name}
             onChange={handleNameChange}
-            className="w-full p-2 text-gray-900 rounded bg-white placeholder-gray-500 transition-all duration-75 focus:ring-2 focus:ring-blue-300"
+            className="w-full p-3 text-gray-900 rounded-lg bg-white placeholder-gray-500 border-0 focus:ring-2 focus:ring-blue-300 transition-all duration-150"
             placeholder="Enter your full name"
             required
             disabled={isSubmitting}
           />
         </motion.div>
 
-        <motion.div variants={childVariants} className="mb-4">
-          <label className="block text-sm mb-1">Phone Number</label>
-          <div className="flex">
+        <motion.div variants={childVariants}>
+          <label className="block text-sm font-medium mb-2">Phone Number</label>
+          <div className="flex gap-2">
             <select
               value={countryCode}
               onChange={handleCountryCodeChange}
-              className="p-2 text-gray-900 rounded-l bg-white border-r border-gray-300 transition-all duration-75 focus:ring-2 focus:ring-blue-300"
+              className="w-20 p-3 text-gray-900 rounded-lg bg-white border-0 focus:ring-2 focus:ring-blue-300 transition-all duration-150 text-sm font-medium"
               disabled={isSubmitting}
             >
               {countryCodes.map(({ code, country }) => (
-                <option key={code} value={code}>
-                  {code} {country}
+                <option key={code} value={code} className="text-sm">
+                  {code}
                 </option>
               ))}
             </select>
@@ -141,27 +141,41 @@ const VerificationForm: React.FC<VerificationFormProps> = ({ onSubmit }) => {
               type="tel"
               value={phone}
               onChange={handlePhoneChange}
-              className="flex-1 p-2 text-gray-900 rounded-r bg-white placeholder-gray-500 transition-all duration-75 focus:ring-2 focus:ring-blue-300"
+              className="flex-1 p-3 text-gray-900 rounded-lg bg-white placeholder-gray-500 border-0 focus:ring-2 focus:ring-blue-300 transition-all duration-150"
               placeholder="Enter phone number"
               required
               disabled={isSubmitting}
             />
           </div>
+          <p className="text-xs mt-1 opacity-70">
+            Selected: {countryCode} ({countryCodes.find(c => c.code === countryCode)?.country})
+          </p>
         </motion.div>
 
         <motion.button
           variants={childVariants}
           type="submit"
           disabled={!name.trim() || !phone.trim() || isSubmitting}
-          className={`w-full py-2 px-4 rounded font-medium transition-all duration-100 active:scale-95 ${
+          className={`w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 mt-6 ${
             !name.trim() || !phone.trim() || isSubmitting
               ? "bg-gray-600 cursor-not-allowed opacity-50"
-              : "bg-blue-600 hover:bg-blue-500 focus:ring-2 focus:ring-blue-300"
+              : "bg-white text-blue-900 hover:bg-blue-50 focus:ring-2 focus:ring-blue-300 active:scale-95"
           }`}
           whileTap={{ scale: (!name.trim() || !phone.trim() || isSubmitting) ? 1 : 0.95 }}
           whileHover={{ scale: (!name.trim() || !phone.trim() || isSubmitting) ? 1 : 1.02 }}
         >
-          {isSubmitting ? "Verifying..." : "Submit Details"}
+          {isSubmitting ? (
+            <span className="flex items-center justify-center gap-2">
+              <motion.div 
+                className="w-4 h-4 border-2 border-blue-900 border-t-transparent rounded-full"
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+              />
+              Submitting...
+            </span>
+          ) : (
+            "Submit Details"
+          )}
         </motion.button>
       </form>
     </motion.div>
