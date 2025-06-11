@@ -61,12 +61,35 @@ export const lookupProperty = async ({ query, k = 3 }: { query: string; k?: numb
         console.log("[lookupProperty] Received raw property results:", result);
 
         if (result.properties && Array.isArray(result.properties) && result.properties.length > 0) {
-            // Keep CHAT hint, provide results for agent summary
-            return {
-                search_results: result.properties, 
-                message: result.message || `Regarding "${query}", I found information about ${result.properties.length} item(s).`,
-                ui_display_hint: 'CHAT',
-            };
+            // Check if this is a specific property query that should show property details UI
+            const isSpecificPropertyQuery = result.properties.length === 1 
+
+            if (isSpecificPropertyQuery) {
+                // Single property detail view - format data for property details UI
+                const property = result.properties[0];
+                const mainImage = property.images && property.images.length > 0 ? property.images[0].url : "/placeholder.svg";
+                const galleryImages = property.images && property.images.length > 1 ? property.images.slice(1).map((img: any) => ({ url: img.url, alt: img.alt || property.name, description: img.description })) : [];
+                const amenities = Array.isArray(property.amenities) ? property.amenities.map((amenity: any) => (typeof amenity === 'string' ? { name: amenity } : amenity)) : [];
+
+                return {
+                    property_details: {
+                        ...property,
+                        mainImage,
+                        galleryImages,
+                        amenities
+                    },
+                    search_results: result.properties,
+                    message: result.message || `Here are the details for ${property.name}.`,
+                    ui_display_hint: 'PROPERTY_DETAILS',
+                };
+            } else {
+                // Multiple properties or general query - keep CHAT hint for agent to summarize
+                return {
+                    search_results: result.properties, 
+                    message: result.message || `Regarding "${query}", I found information about ${result.properties.length} item(s).`,
+                    ui_display_hint: 'PROPERTY_DETAILS',
+                };
+            }
         } else {
              return { message: result.message || "I couldn't find specific details matching that query.", ui_display_hint: 'CHAT' };
         }

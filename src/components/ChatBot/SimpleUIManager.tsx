@@ -160,6 +160,20 @@ export const useSimpleUIManager = () => {
             }
             break;
 
+          case 'PROPERTY_DETAILS':
+            if (response.property_details) {
+              changeMode('PROPERTY_DETAILS', { 
+                selectedProperty: response.property_details
+              }, 'Property details provided');
+            } else if (response.property) {
+              changeMode('PROPERTY_DETAILS', { 
+                selectedProperty: response.property
+              }, 'Property details provided');
+            } else {
+              changeMode(fallback, {}, 'No property details data');
+            }
+            break;
+
           case 'BROCHURE_VIEWER':
             if (response.propertyName && response.brochureUrl) {
               changeMode('BROCHURE_VIEWER', { 

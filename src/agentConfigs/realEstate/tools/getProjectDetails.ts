@@ -94,7 +94,19 @@ export const getProjectDetails = async ({ project_id, project_name }: { project_
         console.log("[getProjectDetails] Received raw project details result:", result);
 
         if (result.properties && Array.isArray(result.properties)) {
-             if (result.properties.length === 1 && (project_id || (project_ids_to_fetch.length === 1 && !project_name) ) ) {
+             // Enhanced logic for determining when to show single property details
+             const shouldShowSinglePropertyDetails = (
+                 result.properties.length === 1 && (
+                     // Specific project ID was requested
+                     project_id ||
+                     // Specific project name was requested (not general list request)
+                     (project_name && project_name.trim() !== '') ||
+                     // Single project fetched by ID
+                     (project_ids_to_fetch.length === 1 && !project_name)
+                 )
+             );
+
+             if (shouldShowSinglePropertyDetails) {
                  // Single property detail view
                  const property = result.properties[0];
                  const mainImage = property.images && property.images.length > 0 ? property.images[0].url : "/placeholder.svg";

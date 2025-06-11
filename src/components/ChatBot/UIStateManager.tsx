@@ -225,7 +225,9 @@ export const handleAgentUIResponse = (
         break;
       
       case 'PROPERTY_DETAILS':
-        if (agentResponse.property) {
+        if (agentResponse.property_details) {
+          helpers.showPropertyDetails(agentResponse.property_details, 'Agent provided property details');
+        } else if (agentResponse.property) {
           helpers.showPropertyDetails(agentResponse.property, 'Agent provided property details');
         }
         break;
