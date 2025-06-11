@@ -186,6 +186,11 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
   const [showIntro, setShowIntro] = useState(true)
   const [selectedLanguage, setSelectedLanguage] = useState("English")
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null)
+  
+  // User guidance states
+  const [showUserHints, setShowUserHints] = useState(false)
+  const [hasShownInitialHints, setHasShownInitialHints] = useState(false)
+  const [hintsDismissed, setHintsDismissed] = useState(false)
 
   // --- Refs ---
   const inputRef = useRef<HTMLInputElement>(null)
@@ -380,6 +385,36 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
     }
   }, [sessionStatus, startTime])
 
+  // Show user hints after agent responds
+  useEffect(() => {
+    if (
+      lastAgentTextMessage && 
+      sessionStatus === 'CONNECTED' && 
+      activeDisplayMode === 'CHAT' && 
+      !hasShownInitialHints && 
+      !hintsDismissed &&
+      transcriptItems.some(item => item.role === 'assistant' && item.text)
+    ) {
+      const timer = setTimeout(() => {
+        setShowUserHints(true)
+        setHasShownInitialHints(true)
+      }, 2000) // Show hints 2 seconds after agent responds
+      
+      return () => clearTimeout(timer)
+    }
+  }, [lastAgentTextMessage, sessionStatus, activeDisplayMode, hasShownInitialHints, hintsDismissed, transcriptItems])
+  
+  // Hide hints after 8 seconds or on interaction
+  useEffect(() => {
+    if (showUserHints) {
+      const timer = setTimeout(() => {
+        setShowUserHints(false)
+      }, 8000)
+      
+      return () => clearTimeout(timer)
+    }
+  }, [showUserHints])
+
   // --- PERFORMANCE OPTIMIZATIONS ---
   
   // Simple click handlers with debouncing
@@ -390,12 +425,26 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
         inputRef.current?.focus()
       }, 100)
     }
+    // Hide hints when user interacts
+    if (showUserHints) {
+      setShowUserHints(false)
+      setHintsDismissed(true)
+    }
+  }
+
+  // Modified mic toggle to hide hints on interaction
+  const handleMicToggle = () => {
+    if (showUserHints) {
+      setShowUserHints(false)
+      setHintsDismissed(true)
+    }
+    toggleMic()
   }
 
   // Debounced handlers to prevent multiple rapid clicks
   const debouncedToggleInput = useDebounce(toggleInput, 150)
   const debouncedHandleCallButtonClick = useDebounce(() => handleCallButtonClick(), 200)
-  const debouncedToggleMic = useDebounce(() => toggleMic(), 100)
+  const debouncedToggleMic = useDebounce(handleMicToggle, 100)
 
   // Batch state updates for better performance
   const batchUIStateUpdate = useCallback((updates: () => void) => {
@@ -1021,6 +1070,88 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
                       {lastAgentTextMessage}
                     </motion.p>
                   )}
+                  
+                  {/* OPTION 1: Animated Hint Bubbles */}
+                  <AnimatePresence>
+                    {showUserHints && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        transition={{ duration: 0.5, ease: "easeOut" }}
+                        className="absolute inset-x-0 bottom-32 flex flex-col items-center space-y-4 px-4"
+                      >
+                        {/* Speech hint */}
+                        <motion.div
+                          initial={{ scale: 0.8, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          transition={{ delay: 0.2, duration: 0.3 }}
+                          className="flex items-center space-x-3 bg-white/10 backdrop-blur-sm rounded-full px-4 py-3 border border-white/20"
+                        >
+                          <motion.div
+                            animate={{ scale: [1, 1.1, 1] }}
+                            transition={{ duration: 2, repeat: Infinity }}
+                            className="p-2 bg-white/20 rounded-full"
+                          >
+                            <Mic size={16} className="text-white" />
+                          </motion.div>
+                          <span className="text-white text-sm font-medium">
+                            You can speak now
+                          </span>
+                        </motion.div>
+                        
+                        {/* OR divider */}
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ delay: 0.4 }}
+                          className="text-white/60 text-xs font-medium"
+                        >
+                          OR
+                        </motion.div>
+                        
+                        {/* Chat button hint */}
+                        <motion.div
+                          initial={{ scale: 0.8, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          transition={{ delay: 0.6, duration: 0.3 }}
+                          className="flex items-center space-x-3 bg-white/10 backdrop-blur-sm rounded-full px-4 py-3 border border-white/20"
+                        >
+                          <motion.div
+                            animate={{ 
+                              scale: [1, 1.1, 1],
+                              x: [0, -2, 2, 0]
+                            }}
+                            transition={{ 
+                              duration: 2, 
+                              repeat: Infinity,
+                              delay: 1
+                            }}
+                            className="p-2 bg-white/20 rounded-full"
+                          >
+                            <MessageSquare size={16} className="text-white" />
+                          </motion.div>
+                          <span className="text-white text-sm font-medium">
+                            Click the chat button to type
+                          </span>
+                          <motion.div
+                            animate={{ 
+                              x: [0, -8, 0],
+                              opacity: [1, 0.7, 1]
+                            }}
+                            transition={{ 
+                              duration: 1.5, 
+                              repeat: Infinity,
+                              delay: 2
+                            }}
+                            className="text-white/80"
+                          >
+                            ⬇
+                          </motion.div>
+                        </motion.div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                   {!lastAgentTextMessage && transcriptItems.length === 0 && (
                     <motion.p 
                       className="text-white text-xl font-medium italic"
@@ -1141,9 +1272,23 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
             >
               <motion.button 
                 onClick={debouncedToggleInput} 
-                className="bg-[#47679D] p-3 rounded-full hover:bg-blue-600 transition-all duration-100 active:scale-95" 
+                className={`bg-[#47679D] p-3 rounded-full hover:bg-blue-600 transition-all duration-100 active:scale-95 ${
+                  showUserHints ? 'ring-4 ring-white/30' : ''
+                }`}
                 whileTap={{ scale: 0.95 }}
                 whileHover={{ scale: 1.05 }}
+                animate={showUserHints ? {
+                  boxShadow: [
+                    "0 0 0 0px rgba(255, 255, 255, 0.3)",
+                    "0 0 0 10px rgba(255, 255, 255, 0)",
+                    "0 0 0 0px rgba(255, 255, 255, 0)"
+                  ]
+                } : {}}
+                transition={showUserHints ? {
+                  duration: 2,
+                  repeat: Infinity,
+                  ease: "easeOut"
+                } : {}}
               > 
                 <MessageSquare size={20} /> 
               </motion.button>
