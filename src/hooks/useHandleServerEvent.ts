@@ -921,6 +921,10 @@ export function useHandleServerEvent({
                 // Special handling for return to realEstate after authentication with pending question
                 console.log("[handleFunctionCall] realEstate agent transfer after authentication - SENDING pending question immediately");
                 
+                // 🚨🚨🚨 CRITICAL: Reset authentication triggered flag after successful verification
+                console.log("🚨🚨🚨 [AUTH RESET] Resetting authenticationTriggeredRef after successful verification");
+                authenticationTriggeredRef.current = false;
+                
                 const pendingQuestion = fnResult.pending_question || (newAgentPreparedMetadata as any).pending_question;
                 
                 if (pendingQuestion) {
@@ -936,8 +940,15 @@ export function useHandleServerEvent({
                     console.log("[handleFunctionCall] Cleared flow_context and pending_question from metadata");
                   }
                   
-                  // Set the display mode to show verification success (temporary)
+                  // Set the display mode to show verification success (longer duration)
+                  console.log("🚨🚨🚨 [VERIFICATION SUCCESS] Showing verification success page for 3 seconds");
                   setActiveDisplayMode('VERIFICATION_SUCCESS');
+                  
+                  // Clear verification success after 3 seconds and switch to CHAT
+                  setTimeout(() => {
+                    console.log("🚨🚨🚨 [VERIFICATION SUCCESS] Switching from verification success to CHAT mode");
+                    setActiveDisplayMode('CHAT');
+                  }, 2000);
                   
                   // Send the pending question immediately like a simulated message
                   setTimeout(() => {
@@ -972,6 +983,17 @@ export function useHandleServerEvent({
                   }, 500); // Small delay to show verification success first
                 } else {
                   console.warn("[handleFunctionCall] No pending question found after authentication transfer");
+                  
+                  // Show verification success page even without pending question
+                  console.log("🚨🚨🚨 [VERIFICATION SUCCESS] Showing verification success page for 3 seconds (no pending question)");
+                  setActiveDisplayMode('VERIFICATION_SUCCESS');
+                  
+                  // Clear verification success after 3 seconds and switch to CHAT
+                  setTimeout(() => {
+                    console.log("🚨🚨🚨 [VERIFICATION SUCCESS] Switching from verification success to CHAT mode");
+                    setActiveDisplayMode('CHAT');
+                  }, 2000);
+                  
                   // Even if no pending question, we should trigger a response for the transfer
                   setTimeout(() => {
                     if (!hasActiveResponseRef.current) {
@@ -1202,8 +1224,12 @@ export function useHandleServerEvent({
         console.log(`🔊 [AUDIO BUFFER STOPPED] ${currentAgentNameInResponse.toUpperCase()} audio playback stopped`);
         
         // This is the perfect time to trigger authentication - when user truly stops hearing the agent
-        if (authenticationTriggeredRef.current && !isTransferringAgentRef.current && currentAgentNameInResponse === 'realEstate') {
-          console.log(`🚨🚨🚨 [BUFFER AUTH] Audio buffer stopped - triggering authentication`);
+        // BUT ONLY if user is not already verified
+        const currentAgent = selectedAgentConfigSet?.find(a => a.name === selectedAgentName);
+        const isVerified = currentAgent?.metadata?.is_verified ?? false;
+        
+        if (authenticationTriggeredRef.current && !isTransferringAgentRef.current && currentAgentNameInResponse === 'realEstate' && !isVerified) {
+          console.log(`🚨🚨🚨 [BUFFER AUTH] Audio buffer stopped - triggering authentication for unverified user`);
           
           // Find authentication agent
           const authAgent = selectedAgentConfigSet?.find((a: any) => a.name === 'authentication');
@@ -1238,9 +1264,46 @@ export function useHandleServerEvent({
               
               console.log(`🚨🚨🚨 [BUFFER AUTH] ✅ SWITCHED TO AUTHENTICATION AGENT`);
               
+              // Trigger the authentication agent to speak its welcome message
+              setTimeout(() => {
+                // Cancel any active response first
+                if (hasActiveResponseRef.current) {
+                  console.log("🚨🚨🚨 [BUFFER AUTH] Cancelling active response before authentication trigger");
+                  sendClientEvent({ type: "response.cancel" }, "(cancelling before auth trigger)");
+                  hasActiveResponseRef.current = false;
+                }
+                
+                // Wait for cancellation to process
+                setTimeout(() => {
+                  // Send a simulated message to trigger the authentication agent
+                  const simulatedAuthMessageId = generateSafeId();
+                  console.log("🚨🚨🚨 [BUFFER AUTH] Sending simulated message to authentication agent: 'I need to verify my details'");
+                  
+                  sendClientEvent({
+                    type: "conversation.item.create", 
+                    item: {
+                      id: simulatedAuthMessageId,
+                      type: "message",
+                      role: "user",
+                      content: [{ type: "input_text", text: "I need to verify my details" }]
+                    }
+                  }, "(simulated message for authentication)");
+                  
+                  // Trigger a response to that message
+                  setTimeout(() => {
+                    console.log("🚨🚨🚨 [BUFFER AUTH] Triggering response for authentication agent");
+                    sendClientEvent({ type: "response.create" }, "(auto-trigger response after buffer auth)");
+                  }, 100);
+                }, 100);
+              }, 100);
+              
               // Mic will be re-enabled when auth UI is ready (in component)
             }, 200); // Even shorter delay since audio buffer has truly stopped
           }
+        } else if (authenticationTriggeredRef.current && currentAgentNameInResponse === 'realEstate' && isVerified) {
+          // User is already verified, just reset the authentication flag
+          console.log(`🚨🚨🚨 [BUFFER AUTH] Audio buffer stopped but user is already verified - resetting authentication flag`);
+          authenticationTriggeredRef.current = false;
         }
         break;
       }

@@ -15,6 +15,7 @@ export default function OTPInput({ onSubmit, onCancel }: OTPInputProps) {
   const [otp, setOtp] = useState(["", "", "", "", "", ""])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isComplete, setIsComplete] = useState(false)
+  const [hasAutoSubmitted, setHasAutoSubmitted] = useState(false) // Prevent multiple auto-submits
   const inputRefs = useRef<HTMLInputElement[]>([])
 
   // Optimized OTP change handler
@@ -60,38 +61,72 @@ export default function OTPInput({ onSubmit, onCancel }: OTPInputProps) {
   useEffect(() => {
     const complete = otp.every(digit => digit !== "")
     setIsComplete(complete)
+    // Reset auto-submit flag when OTP is incomplete
+    if (!complete) {
+      setHasAutoSubmitted(false)
+    }
   }, [otp])
 
-  // Optimized submit handler with debouncing protection
+  // Optimized submit handler with better protection
   const handleSubmit = useCallback(async () => {
-    if (!isComplete || isSubmitting) return
+    if (!isComplete || isSubmitting) {
+      console.log("🔐 [OTP Input] Submit blocked:", { isComplete, isSubmitting })
+      return
+    }
 
+    console.log("🔐 [OTP Input] Starting submission...")
     setIsSubmitting(true)
     
     try {
       const otpString = otp.join("")
       console.log("🔐 [OTP Input] Submitting OTP:", otpString)
       
-      // Call the onSubmit callback immediately for better UX
+      // Call the onSubmit callback
       onSubmit(otpString)
+      
+      // Reset will happen when the component unmounts or when verification completes
+      // Don't reset isSubmitting here - let the parent handle it
     } catch (error) {
       console.error("🔐 [OTP Input] Submission error:", error)
-    } finally {
-      // Reset after a short delay to prevent multiple submissions
-      setTimeout(() => setIsSubmitting(false), 500)
+      // Reset on error only
+      setIsSubmitting(false)
+      setHasAutoSubmitted(false) // Allow retry
     }
   }, [otp, isComplete, isSubmitting, onSubmit])
 
-  // Auto-submit when complete
+  // Reset submission state when component unmounts or OTP changes
   useEffect(() => {
-    if (isComplete && !isSubmitting) {
+    return () => {
+      console.log("🔐 [OTP Input] Component cleanup")
+    }
+  }, [])
+
+  // Reset submission state after successful submission (external trigger)
+  useEffect(() => {
+    if (isSubmitting) {
+      const resetTimer = setTimeout(() => {
+        console.log("🔐 [OTP Input] Auto-reset after timeout")
+        setIsSubmitting(false)
+        setHasAutoSubmitted(false)
+      }, 5000) // Reset after 5 seconds if no external reset
+      
+      return () => clearTimeout(resetTimer)
+    }
+  }, [isSubmitting])
+
+  // Auto-submit when complete (with safeguards)
+  useEffect(() => {
+    if (isComplete && !isSubmitting && !hasAutoSubmitted) {
+      console.log("🔐 [OTP Input] Triggering auto-submit...")
+      setHasAutoSubmitted(true) // Prevent multiple auto-submits
+      
       const timer = setTimeout(() => {
         handleSubmit()
-      }, 300) // Small delay for better UX
+      }, 500) // Slightly longer delay for better UX
       
       return () => clearTimeout(timer)
     }
-  }, [isComplete, isSubmitting, handleSubmit])
+  }, [isComplete, isSubmitting, hasAutoSubmitted]) // Removed handleSubmit from dependencies
 
   return (
     <motion.div

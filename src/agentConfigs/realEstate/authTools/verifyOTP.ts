@@ -185,6 +185,7 @@ export const verifyOTP = async (
 
       return {
         verified: true, // This is the primary result of verifyOTP tool itself
+        success: true, // Explicit success flag
         destination_agent: destinationAgentName,
         ...transferData // Spread all other necessary fields for the transfer
       };
