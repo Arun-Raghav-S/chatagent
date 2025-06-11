@@ -60,6 +60,11 @@ export interface UseHandleServerEventParams {
   
   // --- Mic control for authentication flow ---
   setMicMuted: Dispatch<SetStateAction<boolean>>;
+  
+  // --- Scheduling UI control ---
+  setAvailableSlots?: Dispatch<SetStateAction<Record<string, string[]>>>;
+  setSelectedProperty?: Dispatch<SetStateAction<any | null>>;
+  setShowTimeSlots?: Dispatch<SetStateAction<boolean>>;
 }
 
 // AUTOMATIC QUESTION COUNTING LOGIC - NO AGENT DEPENDENCY
@@ -130,6 +135,10 @@ export function useHandleServerEvent({
   setBrochureData,
   // Mic control
   setMicMuted,
+  // Scheduling UI control
+  setAvailableSlots,
+  setSelectedProperty,
+  setShowTimeSlots,
 }: UseHandleServerEventParams) {
   // Removed context hook calls
   // const { logServerEvent } = useEvent(); // Placeholder call - Logging can be added back if needed
@@ -1508,21 +1517,47 @@ export function useHandleServerEvent({
                     updateTranscriptMessage(itemId, `Error: ${outputData.error}`, false);
                  }
               } else if (functionName === 'getAvailableSlots' && outputData.slots) {
-                 // For getAvailableSlots, the UI update (showing slots) is triggered by setActiveDisplayMode('SCHEDULING_FORM').
-                                // The agent should also provide a textual message.
-               const defaultSlotsMessage = "Please select a date and time for your visit.";
-               const slotsMessage = outputData.text_message || defaultSlotsMessage;
+                 // 🚨 CRITICAL: Handle getAvailableSlots response and set UI state
+                 console.log(`📅 [SLOTS RECEIVED] ${selectedAgentName.toUpperCase()}: slots data:`, outputData.slots);
+                 
+                 // Set the available slots in the UI state
+                 if (setAvailableSlots) {
+                   setAvailableSlots(outputData.slots);
+                 }
+                 
+                 // Set up the scheduling UI
+                 if (setShowTimeSlots) {
+                   setShowTimeSlots(true);
+                 }
+                 
+                 // Ensure we're in scheduling mode
+                 setActiveDisplayMode('SCHEDULING_FORM');
+                 
+                 // Create/update property if needed
+                 if (!outputData.property_id && setSelectedProperty) {
+                   const propertyName = outputData.property_name || "Selected Property";
+                   setSelectedProperty({
+                     id: outputData.property_id || "default-property",
+                     name: propertyName,
+                     price: "Contact for pricing",
+                     area: "Available on request",
+                     description: `Schedule a visit to see ${propertyName} in person.`,
+                     mainImage: "/placeholder.svg",
+                   });
+                 }
+                                
+                 // Add message to transcript
+                 const defaultSlotsMessage = "Please select a date and time for your visit.";
+                 const slotsMessage = outputData.message || outputData.text_message || defaultSlotsMessage;
                
-               // 🚨 LOG SCHEDULING SLOTS MESSAGE
-               console.log(`📅 [SCHEDULING RESPONSE] ${selectedAgentName.toUpperCase()}: "${slotsMessage}"`);
+                 // 🚨 LOG SCHEDULING SLOTS MESSAGE
+                 console.log(`📅 [SCHEDULING RESPONSE] ${selectedAgentName.toUpperCase()}: "${slotsMessage}"`);
                
-               if (!transcriptItems?.some(item => item.itemId === itemId)) {
-                  addTranscriptMessage(itemId, "assistant", slotsMessage, [], selectedAgentName); 
-               } else {
-                  updateTranscriptMessage(itemId, slotsMessage, false);
-               }
-                 // Actual slot data (outputData.slots) is handled via chat.tsx state if needed by TimePick directly,
-                 // or passed via property in fnResult.scheduling_data if that pattern is used.
+                 if (!transcriptItems?.some(item => item.itemId === itemId)) {
+                    addTranscriptMessage(itemId, "assistant", slotsMessage, [], selectedAgentName); 
+                 } else {
+                    updateTranscriptMessage(itemId, slotsMessage, false);
+                 }
               }
               // Do not return here for all function_call_outputs, let general message handling proceed if no specific message was added.
             } catch (error) {
@@ -2017,7 +2052,16 @@ export function useHandleServerEvent({
       setBrochureData,
   ]);
 
-  const canCreateResponse = () => !hasActiveResponseRef.current && !isTransferringAgentRef.current;
+  const canCreateResponse = () => {
+    const canCreate = !hasActiveResponseRef.current && !isTransferringAgentRef.current;
+    if (!canCreate) {
+      console.log("[canCreateResponse] Blocking response creation:", {
+        hasActiveResponse: hasActiveResponseRef.current,
+        isTransferringAgent: isTransferringAgentRef.current
+      });
+    }
+    return canCreate;
+  };
 
   return {
     handleServerEvent: handleServerEventRef,

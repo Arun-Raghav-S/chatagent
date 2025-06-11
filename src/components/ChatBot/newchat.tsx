@@ -122,7 +122,10 @@ const shouldHideFromUI = (text: string, agentName?: string): boolean => {
     // Schedule visit request messages
     text.toLowerCase().includes('schedule a visit for') ||
     text.toLowerCase().includes('book an appointment') ||
-    /yes, i'd like to schedule a visit for .+/i.test(text)
+    /yes, i'd like to schedule a visit for .+/i.test(text) ||
+    
+    // Hide scheduling agent trigger message
+    text === "Hello, I need help with booking a visit. Please show me available dates."
   );
   
   // Hide pending questions that are being replayed after authentication
@@ -480,30 +483,40 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
             !hasEverSentInitialHiRef.current;
   
             const shouldSendPendingQuestion = isReturningToRealEstateAfterQuestionAuth;
+            
+            // 🚨 CRITICAL: For scheduleMeeting agent, we need to trigger getAvailableSlots
+            const shouldTriggerSchedulingAgent = selectedAgentName === 'scheduleMeeting';
   
-                      if (shouldSendPendingQuestion) {
-            const pendingQuestion = (agentMetadata as ExtendedAgentMetadata).pending_question;
-            updateSession(false);
-            setTimeout(() => {
-              if (pendingQuestion) {
-                console.log(`🔍 [PENDING QUESTION] Sending pending question: "${pendingQuestion}"`);
-                // Note: The filtering logic is handled in useHandleServerEvent.ts 
-                // The pending question will be filtered from the UI but processed by the agent
-                sendSimulatedUserMessage(pendingQuestion);
+            if (shouldSendPendingQuestion) {
+              const pendingQuestion = (agentMetadata as ExtendedAgentMetadata).pending_question;
+              updateSession(false);
+              setTimeout(() => {
+                if (pendingQuestion) {
+                  console.log(`🔍 [PENDING QUESTION] Sending pending question: "${pendingQuestion}"`);
+                  // Note: The filtering logic is handled in useHandleServerEvent.ts 
+                  // The pending question will be filtered from the UI but processed by the agent
+                  sendSimulatedUserMessage(pendingQuestion);
+                }
+                setAgentMetadata(prev => ({
+                  ...prev,
+                  flow_context: undefined,
+                  pending_question: undefined
+                } as ExtendedAgentMetadata));
+              }, 500);
+            } else if (shouldTriggerSchedulingAgent) {
+              console.log(`📅 [SCHEDULING TRIGGER] Triggering scheduleMeeting agent to call getAvailableSlots`);
+              updateSession(false);
+              setTimeout(() => {
+                // Send a trigger message to make the scheduling agent call getAvailableSlots
+                sendSimulatedUserMessage("Hello, I need help with booking a visit. Please show me available dates.");
+              }, 500);
+            } else {
+              updateSession(shouldSendSimulatedHi);
+              // Mark that we've sent the initial hi message if we did
+              if (shouldSendSimulatedHi) {
+                hasEverSentInitialHiRef.current = true;
               }
-              setAgentMetadata(prev => ({
-                ...prev,
-                flow_context: undefined,
-                pending_question: undefined
-              } as ExtendedAgentMetadata));
-            }, 500);
-                      } else {
-            updateSession(shouldSendSimulatedHi);
-            // Mark that we've sent the initial hi message if we did
-            if (shouldSendSimulatedHi) {
-              hasEverSentInitialHiRef.current = true;
             }
-          }
   
             setTimeout(() => {
               updateSessionMicState();

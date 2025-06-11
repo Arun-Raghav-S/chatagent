@@ -47,20 +47,38 @@ export const getAvailableSlots = async (
     console.log(`[getAvailableSlots] Using fallback property name: ${propertyName}`);
   }
   
-  // Generate available slots for the next 7 days
+  // Generate available slots for the next 2 months (weekdays only)
   const slots: Record<string, string[]> = {};
   const standardTimeSlots = ["11:00 AM", "4:00 PM"];
   
-  // Generate slots for next 7 days
+  // Generate slots for next 2 months (weekdays only: Monday-Friday)
   const today = new Date();
-  for (let i = 1; i <= 7; i++) {
-    const date = new Date(today);
-    date.setDate(today.getDate() + i);
-    const dayName = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-    slots[dayName] = [...standardTimeSlots]; // Copy the time slots
+  const endDate = new Date(today);
+  endDate.setMonth(today.getMonth() + 2); // 2 months from now
+  
+  let currentDate = new Date(today);
+  currentDate.setDate(today.getDate() + 1); // Start from tomorrow
+  
+  while (currentDate <= endDate) {
+    const dayOfWeek = currentDate.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    
+    // Only include weekdays (Monday = 1, Tuesday = 2, Wednesday = 3, Thursday = 4, Friday = 5)
+    if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+      const dateKey = currentDate.toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        month: 'long', 
+        day: 'numeric',
+        year: 'numeric'
+      });
+      slots[dateKey] = [...standardTimeSlots]; // Copy the time slots
+    }
+    
+    // Move to next day
+    currentDate.setDate(currentDate.getDate() + 1);
   }
   
-  console.log(`[getAvailableSlots] Generated slots for ${Object.keys(slots).length} days:`, Object.keys(slots));
+  console.log(`[getAvailableSlots] Generated slots for ${Object.keys(slots).length} weekdays over 2 months:`, Object.keys(slots).slice(0, 10), "...");
+  console.log(`[getAvailableSlots] Date range: ${new Date(today.getTime() + 24*60*60*1000).toDateString()} to ${endDate.toDateString()}`);
   
   const isVerified = metadata?.is_verified === true;
   const userVerificationStatus = isVerified ? "verified" : "unverified";

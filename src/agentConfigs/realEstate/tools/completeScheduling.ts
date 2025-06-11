@@ -21,6 +21,41 @@ export const completeScheduling = async (realEstateAgent: any) => {
     const customerName = metadata?.customer_name;
     const phoneNumber = metadata?.phone_number;
     
+    // 🚨 FIX: Clean up date and time to prevent display issues
+    let cleanDate = selectedDate;
+    let cleanTime = selectedTime;
+    
+    // Ensure date doesn't contain time information
+    if (cleanDate && cleanDate.includes(' at ')) {
+        cleanDate = cleanDate.split(' at ')[0].trim();
+    }
+    
+    // Clean up time field - remove periods, handle duplicates
+    if (cleanTime) {
+        cleanTime = cleanTime.replace(/\.$/, '').trim();
+        
+        // Handle duplicate times like "4:00 PM, 4:00 PM"
+        if (cleanTime.includes(',')) {
+            cleanTime = cleanTime.split(',')[0].trim();
+        }
+        
+        // Handle space-separated duplicates like "4:00 PM 4:00 PM"
+        const timePattern = /(\d{1,2}:\d{2} (?:AM|PM))/i;
+        const timeMatch = cleanTime.match(timePattern);
+        if (timeMatch) {
+            cleanTime = timeMatch[1];
+        }
+    }
+    
+    console.log("[completeScheduling] Cleaned scheduling data:", {
+        originalDate: selectedDate,
+        cleanDate,
+        originalTime: selectedTime,
+        cleanTime,
+        customerName,
+        phoneNumber
+    });
+    
     // Get property info - prefer active_project, fallback to property_name
     let propertyName = metadata?.active_project || metadata?.property_name || "the property";
     let propertyId = metadata?.active_project_id || metadata?.property_id_to_schedule;
@@ -29,13 +64,13 @@ export const completeScheduling = async (realEstateAgent: any) => {
         propertyId,
         propertyName,
         customerName,
-        selectedDate,
-        selectedTime,
+        cleanDate,
+        cleanTime,
         phoneNumber
     });
 
     // Check if we have the required data
-    if (!selectedDate || !selectedTime || !customerName) {
+    if (!cleanDate || !cleanTime || !customerName) {
         console.error("[realEstateAgent.completeScheduling] Missing critical scheduling data!");
         return {
             success: false,
@@ -91,7 +126,7 @@ export const completeScheduling = async (realEstateAgent: any) => {
             customerName: customerName || "",
             phoneNumber: phoneNumber?.startsWith("+") ? phoneNumber.substring(1) : phoneNumber || "",
             propertyId: propertyId || "",
-            visitDateTime: `${selectedDate}, ${selectedTime}`,
+            visitDateTime: `${cleanDate}, ${cleanTime}`,
             chatbotId: metadata.chatbot_id || ""
         };
         
@@ -118,7 +153,7 @@ export const completeScheduling = async (realEstateAgent: any) => {
     }
     
     // Create confirmation message for the agent to say
-    const confirmationMessage = `Great news, ${customerName}! Your visit to ${propertyName} has been scheduled for ${selectedDate} at ${selectedTime}. You'll receive all details shortly!`;
+    const confirmationMessage = `Great news, ${customerName}! Your visit to ${propertyName} has been scheduled for ${cleanDate} at ${cleanTime}. You'll receive all details shortly!`;
     
     // Return success with confirmation message and booking details
     return {
@@ -128,8 +163,8 @@ export const completeScheduling = async (realEstateAgent: any) => {
         booking_details: {
             customerName: customerName,
             propertyName: propertyName,
-            date: selectedDate,
-            time: selectedTime,
+            date: cleanDate,
+            time: cleanTime,
             phoneNumber: phoneNumber
         }
     };

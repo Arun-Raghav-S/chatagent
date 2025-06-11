@@ -214,7 +214,49 @@ export function useServerEvents(
         serverEvent.item?.type === "function_call_output"
       ) {
         const functionOutputItem = serverEvent.item as any
-        const functionName = functionOutputItem.name
+        
+        // Debug the actual structure of the function_call_output
+        console.log("🔍 [DEBUG] function_call_output item structure:", {
+          type: functionOutputItem.type,
+          name: functionOutputItem.name,
+          call_id: functionOutputItem.call_id,
+          output: functionOutputItem.output ? "Present" : "Missing",
+          allKeys: Object.keys(functionOutputItem),
+          fullItem: functionOutputItem
+        });
+        
+        // The function name might be in a different field, let's check all possibilities
+        let functionName = functionOutputItem.name;
+        
+        // If name is undefined, try to extract from call_id or other fields
+        if (!functionName) {
+          // Sometimes the function name might be in function_name field
+          functionName = functionOutputItem.function_name;
+        }
+        
+        // If still not found, try to infer from output content
+        if (!functionName && functionOutputItem.output) {
+          try {
+            const outputData = JSON.parse(functionOutputItem.output);
+            console.log("🔍 [DEBUG] Parsed output data keys:", Object.keys(outputData));
+            
+            // Check if this looks like getAvailableSlots output
+            if (outputData.slots && outputData.timeSlots && outputData.property_id) {
+              console.log("🔍 [DEBUG] Inferring this is getAvailableSlots based on output structure");
+              functionName = "getAvailableSlots";
+            }
+            // Check if this looks like scheduleVisit output
+            else if (outputData.booking_confirmed !== undefined) {
+              console.log("🔍 [DEBUG] Inferring this is scheduleVisit based on output structure");
+              functionName = "scheduleVisit";
+            }
+            // Add more patterns as needed
+          } catch (e) {
+            console.log("🔍 [DEBUG] Could not parse output data for function inference");
+          }
+        }
+        
+        console.log("🔍 [DEBUG] Resolved function name:", functionName);
 
         console.log(
           `🔧 [TOOL EXECUTED] ${selectedAgentName.toUpperCase()} executed: ${functionName}`

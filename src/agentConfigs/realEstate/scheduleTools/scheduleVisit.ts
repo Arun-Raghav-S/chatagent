@@ -32,8 +32,31 @@ export const scheduleVisit = async (
 
   // Parse the date and time from visitDateTime
   const dateTimeParts = actualVisitDateTime.split(' at ');
-  const selectedDate = dateTimeParts[0] || (metadata as any)?.selectedDate;
-  const selectedTime = dateTimeParts[1] || (metadata as any)?.selectedTime;
+  let selectedDate = dateTimeParts[0] || (metadata as any)?.selectedDate;
+  let selectedTime = dateTimeParts[1] || (metadata as any)?.selectedTime;
+  
+  // 🚨 FIX: Clean up any duplicate time or malformed time strings
+  if (selectedTime) {
+    // Remove any trailing periods and clean up duplicates
+    selectedTime = selectedTime.replace(/\.$/, '').trim();
+    
+    // Handle cases like "4:00 PM, 4:00 PM" - take only the first occurrence
+    if (selectedTime.includes(',')) {
+      selectedTime = selectedTime.split(',')[0].trim();
+    }
+    
+    // Handle cases like "4:00 PM 4:00 PM" - take only the first occurrence
+    const timePattern = /(\d{1,2}:\d{2} (?:AM|PM))/i;
+    const timeMatch = selectedTime.match(timePattern);
+    if (timeMatch) {
+      selectedTime = timeMatch[1];
+    }
+  }
+  
+  // 🚨 FIX: Ensure selectedDate doesn't contain time information
+  if (selectedDate && selectedDate.includes(' at ')) {
+    selectedDate = selectedDate.split(' at ')[0].trim();
+  }
 
   let property_id = propertyIdFromArgs || (metadata as any)?.property_id_to_schedule;
   if (!property_id && (metadata as any)?.lastReturnedPropertyId) {
