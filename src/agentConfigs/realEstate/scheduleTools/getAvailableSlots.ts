@@ -47,11 +47,20 @@ export const getAvailableSlots = async (
     console.log(`[getAvailableSlots] Using fallback property name: ${propertyName}`);
   }
   
+  // Generate available slots for the next 7 days
   const slots: Record<string, string[]> = {};
   const standardTimeSlots = ["11:00 AM", "4:00 PM"];
-  if ((metadata as any)?.selectedDate) {
-    slots[(metadata as any).selectedDate] = standardTimeSlots;
+  
+  // Generate slots for next 7 days
+  const today = new Date();
+  for (let i = 1; i <= 7; i++) {
+    const date = new Date(today);
+    date.setDate(today.getDate() + i);
+    const dayName = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    slots[dayName] = [...standardTimeSlots]; // Copy the time slots
   }
+  
+  console.log(`[getAvailableSlots] Generated slots for ${Object.keys(slots).length} days:`, Object.keys(slots));
   
   const isVerified = metadata?.is_verified === true;
   const userVerificationStatus = isVerified ? "verified" : "unverified";
