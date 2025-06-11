@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useRef, useCallback } from "react"
+import React, { useState, useEffect, useRef, useCallback, startTransition } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   MessageSquare,
@@ -50,6 +50,52 @@ import {
   ActiveDisplayMode,
   ExtendedAgentMetadata,
 } from "./newchat_types"
+
+// --- OPTIMIZED ANIMATION CONFIGURATIONS ---
+const FAST_SPRING = { type: "spring", stiffness: 500, damping: 35 }
+const FAST_TRANSITION = { duration: 0.15, ease: "easeOut" }
+const INSTANT_TRANSITION = { duration: 0.08, ease: "easeOut" }
+
+// Optimized animation variants for better performance
+const inputAnimationVariants = {
+  hidden: { y: 60, opacity: 0 },
+  visible: { 
+    y: 0, 
+    opacity: 1,
+    transition: FAST_TRANSITION
+  },
+  exit: { 
+    y: 60, 
+    opacity: 0,
+    transition: INSTANT_TRANSITION
+  }
+}
+
+const uiTransitionVariants = {
+  hidden: { opacity: 0, scale: 0.98 },
+  visible: { 
+    opacity: 1, 
+    scale: 1,
+    transition: INSTANT_TRANSITION
+  },
+  exit: { 
+    opacity: 0, 
+    scale: 0.98,
+    transition: INSTANT_TRANSITION
+  }
+}
+
+// Debounce utility for preventing multiple rapid clicks
+const useDebounce = (callback: (...args: any[]) => void, delay: number) => {
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+  
+  return useCallback((...args: any[]) => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+    }
+    timeoutRef.current = setTimeout(() => callback(...args), delay)
+  }, [callback, delay])
+}
 
 // Helper function to determine if a message should be hidden from UI (pending questions, UI-generated messages, etc.)
 const shouldHideFromUI = (text: string, agentName?: string): boolean => {
@@ -221,7 +267,8 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
     (text: string) => sendTriggerMessage(text),
     sessionStatus,
     transcriptItems,
-    initialSessionSetupDoneRef
+    initialSessionSetupDoneRef,
+    selectedAgentName
   )
 
   const { handleServerEvent, canCreateResponse, bookingDetails } =
@@ -256,7 +303,8 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
       setShowVerificationScreen,
       selectedTime,
       selectedDay,
-      prevAgentNameRef
+      prevAgentNameRef,
+      setMicMuted
     )
 
   useEffect(() => {
@@ -329,25 +377,46 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
     }
   }, [sessionStatus, startTime])
 
+  // --- PERFORMANCE OPTIMIZATIONS ---
+  
+  // Simple click handlers with debouncing
   const toggleInput = () => {
     setInputVisible(!inputVisible)
     if (!inputVisible) {
       setTimeout(() => {
         inputRef.current?.focus()
-      }, 300)
+      }, 100)
     }
   }
 
-  const handleLanguageSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedLanguage(e.target.value)
-  }
+  // Debounced handlers to prevent multiple rapid clicks
+  const debouncedToggleInput = useDebounce(toggleInput, 150)
+  const debouncedHandleCallButtonClick = useDebounce(() => handleCallButtonClick(), 200)
+  const debouncedToggleMic = useDebounce(() => toggleMic(), 100)
 
-  const handleProceed = () => {
-    setShowIntro(false)
+  // Batch state updates for better performance
+  const batchUIStateUpdate = useCallback((updates: () => void) => {
+    startTransition(() => {
+      updates()
+    })
+  }, [])
+
+  // Optimized language selection handler
+  const handleLanguageSelect = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    batchUIStateUpdate(() => {
+      setSelectedLanguage(e.target.value)
+    })
+  }, [batchUIStateUpdate])
+
+  // Optimized proceed handler
+  const handleProceed = useCallback(() => {
+    batchUIStateUpdate(() => {
+      setShowIntro(false)
+    })
     if (sessionStatus === "DISCONNECTED") {
       connectToRealtime()
     }
-  }
+  }, [sessionStatus, connectToRealtime, batchUIStateUpdate])
   
   useEffect(() => {
     if (sessionStatus === "CONNECTED" && !showIntro) {
@@ -474,6 +543,12 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
         `🖥️ [UI MODE] Setting VERIFICATION_FORM display mode for authentication agent`
       )
       hasShownSuccessMessageRef.current = false
+      
+      // Re-enable mic for authentication agent after UI transition
+      setTimeout(() => {
+        console.log(`🚨🚨🚨 [MIC CONTROL] Re-enabling mic for authentication agent`)
+        setMicMuted(false)
+      }, 700) // Small delay to ensure UI has switched
     } else if (selectedAgentName === "scheduleMeeting") {
       console.log(
         `📅 [AGENT SWITCH] Switched TO scheduleMeeting agent from: ${
@@ -571,17 +646,18 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
     }
   }, [disconnectFromRealtime, audioElementRef])
 
+  // Optimized scrolling effect
   useEffect(() => {
     if (!selectedPropertyDetails) {
-      transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" })
+      // Use requestAnimationFrame for smoother scrolling
+      requestAnimationFrame(() => {
+        transcriptEndRef.current?.scrollIntoView({ 
+          behavior: "smooth",
+          block: "end"
+        })
+      })
     }
-  }, [
-    transcriptItems,
-    lastAgentTextMessage,
-    propertyListData,
-    selectedPropertyDetails,
-    transcriptEndRef,
-  ])
+  }, [transcriptItems, lastAgentTextMessage, propertyListData, selectedPropertyDetails])
 
   const languageOptions = [
     "English", "Hindi", "Tamil", "Telugu", "Malayalam", "Spanish", "French",
@@ -600,7 +676,12 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
       className="relative bg-blue-900 rounded-3xl overflow-hidden text-white flex flex-col"
       style={{ width: "329px", height: "611px" }}
     >
-      <div className="flex items-center p-4 border-b border-blue-800 flex-shrink-0">
+      <motion.div 
+        className="flex items-center p-4 border-b border-blue-800 flex-shrink-0"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={INSTANT_TRANSITION}
+      >
         <div className="flex items-center">
           <div className="bg-white rounded-full p-1 mr-2">
             <div className="text-blue-800 w-8 h-8 flex items-center justify-center">
@@ -632,227 +713,461 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
           </div>
           <span className="font-medium">Real Estate AI Agent</span>
         </div>
-        <button className="ml-auto p-2 hover:bg-blue-800 rounded-full">
+        <button className="ml-auto p-2 hover:bg-blue-800 rounded-full transition-colors duration-100">
           <X size={20} />
         </button>
-      </div>
+      </motion.div>
       {showIntro ? (
-        <div className="flex flex-col h-full items-center justify-center p-6 text-center">
-          <h2 className="text-2xl font-medium mb-6">
-            Hey there, Please select a language
-          </h2>
-          <div className="relative w-full mb-8">
-            <select
-              value={selectedLanguage}
-              onChange={handleLanguageSelect}
-              className="appearance-none bg-transparent py-2 pr-10 border-b-2 border-white w-full text-center text-xl font-medium focus:outline-none"
-            >
-              {languageOptions.map(lang => (
-                <option key={lang} value={lang} className="bg-blue-800 text-white">
-                  {lang}
-                </option>
-              ))}
-            </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-white">
-              <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-            </div>
-          </div>
-          <p className="text-xl mb-8">to continue.</p>
-          <button 
-            onClick={handleProceed}
-            className="bg-white text-blue-900 px-6 py-2 rounded-md font-medium hover:bg-blue-100 transition-colors"
+        <AnimatePresence mode="wait">
+          <motion.div 
+            key="intro"
+            className="flex flex-col h-full items-center justify-center p-6 text-center"
+            variants={uiTransitionVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
           >
-            Let's go
-          </button>
-        </div>
+            <motion.h2 
+              className="text-2xl font-medium mb-6"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ ...INSTANT_TRANSITION, delay: 0.05 }}
+            >
+              Hey there, Please select a language
+            </motion.h2>
+            
+            <motion.div 
+              className="relative w-full mb-8"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ ...INSTANT_TRANSITION, delay: 0.1 }}
+            >
+              <select
+                value={selectedLanguage}
+                onChange={handleLanguageSelect}
+                className="appearance-none bg-transparent py-2 pr-10 border-b-2 border-white w-full text-center text-xl font-medium focus:outline-none transition-all duration-100"
+              >
+                {languageOptions.map(lang => (
+                  <option key={lang} value={lang} className="bg-blue-800 text-white">
+                    {lang}
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-white">
+                <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+              </div>
+            </motion.div>
+            
+            <motion.p 
+              className="text-xl mb-8"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ ...INSTANT_TRANSITION, delay: 0.15 }}
+            >
+              to continue.
+            </motion.p>
+            
+            <motion.button 
+              onClick={handleProceed}
+              className="bg-white text-blue-900 px-6 py-2 rounded-md font-medium hover:bg-blue-100 transition-all duration-100 active:scale-95"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ ...INSTANT_TRANSITION, delay: 0.2 }}
+              whileTap={{ scale: 0.95 }}
+              whileHover={{ scale: 1.02 }}
+            >
+              Let's go
+            </motion.button>
+          </motion.div>
+        </AnimatePresence>
       ) : (
         <>
           {sessionStatus === 'CONNECTED' && (activeDisplayMode === 'CHAT' || activeDisplayMode === 'IMAGE_GALLERY') && (
-             <div className="border-1 h-10 rounded-3xl w-72 p-4 justify-evenly ml-5 my-2 flex-shrink-0">
-               <VoiceWaveform
-                 mediaStream={audioElementRef.current?.srcObject as MediaStream}
-                 active={sessionStatus === 'CONNECTED' && !!audioElementRef.current?.srcObject}
-               />
-             </div>
-          )}
-          {activeDisplayMode === 'IMAGE_GALLERY' && (
-            <button
-              onClick={handleCloseGallery}
-              className="mb-2 ml-4 self-start bg-blue-700 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg flex items-center shadow"
+            <motion.div 
+              className="border-1 h-10 rounded-3xl w-72 p-4 justify-evenly ml-5 my-2 flex-shrink-0"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={INSTANT_TRANSITION}
             >
-              <ArrowLeft size={16} className="mr-2" />
-              Back
-            </button>
-          )}
-          {activeDisplayMode === 'LOCATION_MAP' && (
-            <button
-              onClick={handleCloseLocationMap}
-              className="mb-2 ml-4 self-start bg-blue-700 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg flex items-center shadow"
-            >
-              <ArrowLeft size={16} className="mr-2" />
-              Back
-            </button>
-          )}
-          {activeDisplayMode === 'BROCHURE_VIEWER' && (
-            <button
-              onClick={handleCloseBrochure}
-              className="mb-2 ml-4 self-start bg-blue-700 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg flex items-center shadow"
-            >
-              <ArrowLeft size={16} className="mr-2" />
-              Back
-            </button>
-          )}
-          <div className={`flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-blue-700 scrollbar-track-blue-800 space-y-4`}>
-            {activeDisplayMode === 'PROPERTY_LIST' && propertyListData && (
-              <PropertyList 
-                properties={propertyListData}
-                onScheduleVisit={() => {}} 
-                onPropertySelect={handlePropertySelect}
+              <VoiceWaveform
+                mediaStream={audioElementRef.current?.srcObject as MediaStream}
+                active={sessionStatus === 'CONNECTED' && !!audioElementRef.current?.srcObject}
               />
+            </motion.div>
+          )}
+          <AnimatePresence mode="wait">
+            {activeDisplayMode === 'IMAGE_GALLERY' && (
+              <motion.button
+                key="gallery-back"
+                onClick={handleCloseGallery}
+                className="mb-2 ml-4 self-start bg-blue-700 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg flex items-center shadow transition-all duration-100 active:scale-95"
+                variants={uiTransitionVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                whileTap={{ scale: 0.95 }}
+              >
+                <ArrowLeft size={16} className="mr-2" />
+                Back
+              </motion.button>
             )}
-            {activeDisplayMode === 'SCHEDULING_FORM' && selectedProperty && !isVerifying && (
-              <div className="relative w-full">
-                <TimePick
-                  schedule={Object.keys(availableSlots).length > 0 ? availableSlots : {}}
-                  property={selectedProperty}
-                  onTimeSelect={handleTimeSlotSelection}
-                />
-              </div>
+            
+            {activeDisplayMode === 'LOCATION_MAP' && (
+              <motion.button
+                key="map-back"
+                onClick={handleCloseLocationMap}
+                className="mb-2 ml-4 self-start bg-blue-700 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg flex items-center shadow transition-all duration-100 active:scale-95"
+                variants={uiTransitionVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                whileTap={{ scale: 0.95 }}
+              >
+                <ArrowLeft size={16} className="mr-2" />
+                Back
+              </motion.button>
             )}
-            {activeDisplayMode === 'VERIFICATION_FORM' && (
-              <div className="relative w-full">
-                 <VerificationForm onSubmit={handleVerificationSubmit} /> 
-              </div>
+            
+            {activeDisplayMode === 'BROCHURE_VIEWER' && (
+              <motion.button
+                key="brochure-back"
+                onClick={handleCloseBrochure}
+                className="mb-2 ml-4 self-start bg-blue-700 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg flex items-center shadow transition-all duration-100 active:scale-95"
+                variants={uiTransitionVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                whileTap={{ scale: 0.95 }}
+              >
+                <ArrowLeft size={16} className="mr-2" />
+                Back
+              </motion.button>
             )}
-            {activeDisplayMode === 'OTP_FORM' && (
-              <div className="relative w-full">
-                <OTPInput 
-                  onSubmit={handleOtpSubmit}
-                />
-              </div>
-            )}
-            {activeDisplayMode === 'VERIFICATION_SUCCESS' && (
-              <div className="flex flex-col items-center justify-center w-full py-8">
-                <div className="bg-green-500 rounded-full p-3 mb-4">
-                  <CheckCircle size={40} className="text-white" />
-                </div>
-                <h3 className="text-xl font-semibold mb-2">Verification Successful!</h3>
-                <p className="text-center">
-                  Your phone number has been successfully verified. You can now proceed.
-                </p>
-              </div>
-            )}
-            {activeDisplayMode === 'IMAGE_GALLERY' && propertyGalleryData && (
-              <div className="w-full">
-                <PropertyImageGallery
-                  propertyName={propertyGalleryData.propertyName}
-                  images={propertyGalleryData.images}
-                  onClose={handleCloseGallery} 
-                />
-              </div>
-            )}
-            {activeDisplayMode === 'LOCATION_MAP' && locationMapData && (
-              <div className="w-full">
-                <LocationMap
-                  propertyName={locationMapData.propertyName}
-                  location={locationMapData.location}
-                  description={locationMapData.description}
-                  onClose={handleCloseLocationMap} 
-                />
-              </div>
-            )}
-            {activeDisplayMode === 'BROCHURE_VIEWER' && brochureData && (
-              <div className="w-full p-4">
-                <BrochureViewer
-                  propertyName={brochureData.propertyName}
-                  brochureUrl={brochureData.brochureUrl}
-                  onClose={handleCloseBrochure} 
-                />
-              </div>
-            )}
-            {activeDisplayMode === 'CHAT' && (
-              <div className="flex flex-col justify-center items-center h-full text-center px-4">
-                 {lastAgentTextMessage && (
-                    <p className="text-white text-xl font-medium italic mb-10">
+          </AnimatePresence>
+          <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-blue-700 scrollbar-track-blue-800 space-y-4">
+            <AnimatePresence mode="wait" initial={false}>
+              {activeDisplayMode === 'PROPERTY_LIST' && propertyListData && (
+                <motion.div
+                  key="property-list"
+                  variants={uiTransitionVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                >
+                  <PropertyList 
+                    properties={propertyListData}
+                    onScheduleVisit={() => {}} 
+                    onPropertySelect={handlePropertySelect}
+                  />
+                </motion.div>
+              )}
+              {activeDisplayMode === 'SCHEDULING_FORM' && selectedProperty && selectedProperty.id && !isVerifying && (
+                <motion.div 
+                  key="scheduling-form"
+                  className="relative w-full"
+                  variants={uiTransitionVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                >
+                  <TimePick
+                    schedule={Object.keys(availableSlots).length > 0 ? availableSlots : {}}
+                    property={selectedProperty as { id: string; name: string; price: string; area: string; description: string; mainImage: string }}
+                    onTimeSelect={(selectedDate: string, selectedTime?: string) => {
+                      if (selectedTime) {
+                        handleTimeSlotSelection(selectedDate, selectedTime)
+                      }
+                    }}
+                  />
+                </motion.div>
+              )}
+              {activeDisplayMode === 'VERIFICATION_FORM' && (
+                <motion.div 
+                  key="verification-form"
+                  className="relative w-full"
+                  variants={uiTransitionVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                >
+                  <VerificationForm onSubmit={handleVerificationSubmit} /> 
+                </motion.div>
+              )}
+              {activeDisplayMode === 'OTP_FORM' && (
+                <motion.div 
+                  key="otp-form"
+                  className="relative w-full"
+                  variants={uiTransitionVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                >
+                  <OTPInput onSubmit={handleOtpSubmit} />
+                </motion.div>
+              )}
+              {activeDisplayMode === 'VERIFICATION_SUCCESS' && (
+                <motion.div 
+                  key="verification-success"
+                  className="flex flex-col items-center justify-center w-full py-8"
+                  variants={uiTransitionVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                >
+                  <motion.div 
+                    className="bg-green-500 rounded-full p-3 mb-4"
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ ...FAST_SPRING, delay: 0.1 }}
+                  >
+                    <CheckCircle size={40} className="text-white" />
+                  </motion.div>
+                  <motion.h3 
+                    className="text-xl font-semibold mb-2"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ ...INSTANT_TRANSITION, delay: 0.2 }}
+                  >
+                    Verification Successful!
+                  </motion.h3>
+                  <motion.p 
+                    className="text-center"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ ...INSTANT_TRANSITION, delay: 0.3 }}
+                  >
+                    Your phone number has been successfully verified. You can now proceed.
+                  </motion.p>
+                </motion.div>
+              )}
+              {activeDisplayMode === 'IMAGE_GALLERY' && propertyGalleryData && (
+                <motion.div 
+                  key="image-gallery"
+                  className="w-full"
+                  variants={uiTransitionVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                >
+                  <PropertyImageGallery
+                    propertyName={propertyGalleryData.propertyName}
+                    images={propertyGalleryData.images}
+                    onClose={handleCloseGallery} 
+                  />
+                </motion.div>
+              )}
+              {activeDisplayMode === 'LOCATION_MAP' && locationMapData && (
+                <motion.div 
+                  key="location-map"
+                  className="w-full"
+                  variants={uiTransitionVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                >
+                  <LocationMap
+                    propertyName={locationMapData.propertyName}
+                    location={locationMapData.location}
+                    description={locationMapData.description}
+                    onClose={handleCloseLocationMap} 
+                  />
+                </motion.div>
+              )}
+              {activeDisplayMode === 'BROCHURE_VIEWER' && brochureData && (
+                <motion.div 
+                  key="brochure-viewer"
+                  className="w-full p-4"
+                  variants={uiTransitionVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                >
+                  <BrochureViewer
+                    propertyName={brochureData.propertyName}
+                    brochureUrl={brochureData.brochureUrl}
+                    onClose={handleCloseBrochure} 
+                  />
+                </motion.div>
+              )}
+              {activeDisplayMode === 'CHAT' && (
+                <motion.div 
+                  key="chat-mode"
+                  className="flex flex-col justify-center items-center h-full text-center px-4"
+                  variants={uiTransitionVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                >
+                  {lastAgentTextMessage && (
+                    <motion.p 
+                      className="text-white text-xl font-medium italic mb-10"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={INSTANT_TRANSITION}
+                    >
                       {lastAgentTextMessage}
-                    </p>
+                    </motion.p>
                   )}
                   {!lastAgentTextMessage && transcriptItems.length === 0 && (
-                     <p className="text-white text-xl font-medium italic">How can I help you today?</p>
+                    <motion.p 
+                      className="text-white text-xl font-medium italic"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={INSTANT_TRANSITION}
+                    >
+                      How can I help you today?
+                    </motion.p>
                   )}
-              </div>
-            )}
+                </motion.div>
+              )}
+              {activeDisplayMode === 'BOOKING_CONFIRMATION' && bookingDetails && (
+                <motion.div 
+                  key="booking-confirmation"
+                  className="relative w-full flex items-center justify-center"
+                  variants={uiTransitionVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                >
+                  <BookingDetailsCard
+                    customerName={bookingDetails.customerName}
+                    propertyName={bookingDetails.propertyName}
+                    date={bookingDetails.date}
+                    time={bookingDetails.time}
+                    phoneNumber={bookingDetails.phoneNumber}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
             <div ref={transcriptEndRef} />
-            {activeDisplayMode === 'BOOKING_CONFIRMATION' && bookingDetails && (
-              <div className="relative w-full flex items-center justify-center">
-                <BookingDetailsCard
-                  customerName={bookingDetails.customerName}
-                  propertyName={bookingDetails.propertyName}
-                  date={bookingDetails.date}
-                  time={bookingDetails.time}
-                  phoneNumber={bookingDetails.phoneNumber}
-                />
-              </div>
-            )}
           </div>
-          {activeDisplayMode === 'CHAT' && transcriptItems
-            .filter(item => item.type === 'MESSAGE' && item.role === 'user' && item.status !== 'DONE')
-            .filter(item => !shouldHideFromUI(item.text || '', item.agentName))
-            .slice(-1)
-            .map(item => (
-              <div key={item.itemId} className="absolute bottom-20 right-4 max-w-[80%] bg-blue-600 p-3 rounded-xl text-sm text-white rounded-br-none z-20 shadow-lg">
-                {item.text || '[Transcribing...]'}
-              </div>
-        ))}
-          {activeDisplayMode === 'PROPERTY_DETAILS' && selectedPropertyDetails && (
-              <div className="absolute inset-0 bg-blue-900 bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-10 p-4">
-                 <div className="max-w-sm w-full">
-                     <PropertyDetails 
-                         {...selectedPropertyDetails}
-                         onClose={handleClosePropertyDetails}
-                         onScheduleVisit={handleScheduleVisitRequest}
-                     />
-                  </div>
-              </div>
-          )}
+          <AnimatePresence>
+            {activeDisplayMode === 'CHAT' && transcriptItems
+              .filter(item => item.type === 'MESSAGE' && item.role === 'user' && item.status !== 'DONE')
+              .filter(item => !shouldHideFromUI(item.text || '', item.agentName))
+              .slice(-1)
+              .map(item => (
+                <motion.div 
+                  key={item.itemId} 
+                  className="absolute bottom-20 right-4 max-w-[80%] bg-blue-600 p-3 rounded-xl text-sm text-white rounded-br-none z-20 shadow-lg"
+                  initial={{ opacity: 0, x: 20, scale: 0.95 }}
+                  animate={{ opacity: 1, x: 0, scale: 1 }}
+                  exit={{ opacity: 0, x: 20, scale: 0.95 }}
+                  transition={INSTANT_TRANSITION}
+                >
+                  {item.text || '[Transcribing...]'}
+                </motion.div>
+            ))}
+          </AnimatePresence>
+          <AnimatePresence>
+            {activeDisplayMode === 'PROPERTY_DETAILS' && selectedPropertyDetails && (
+              <motion.div 
+                key="property-details-modal"
+                className="absolute inset-0 bg-blue-900 bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-10 p-4"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={INSTANT_TRANSITION}
+              >
+                <motion.div 
+                  className="max-w-sm w-full"
+                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                  transition={FAST_TRANSITION}
+                >
+                  <PropertyDetails 
+                    {...selectedPropertyDetails}
+                    onClose={handleClosePropertyDetails}
+                    onScheduleVisit={handleScheduleVisitRequest}
+                  />
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
           <div className="mt-auto flex-shrink-0 z-20">
             <AnimatePresence>
               {inputVisible && (
                 <motion.div
-                  initial={{ y: 60 }} animate={{ y: 0 }} exit={{ y: 60 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                  key="input-area"
+                  variants={inputAnimationVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
                   className="rounded-xl w-[320px] -mb-1 ml-1 h-[48px] shadow-lg bg-[#47679D]"
                 >
                   <div className="flex items-center justify-between w-full px-4 py-2 rounded-lg">
                     <input
-                      ref={inputRef} type="text" value={inputValue}
-                      onChange={(e) => setInputValue(e.target.value)} onKeyDown={handleKeyDown}
+                      ref={inputRef} 
+                      type="text" 
+                      value={inputValue}
+                      onChange={(e) => setInputValue(e.target.value)} 
+                      onKeyDown={handleKeyDown}
                       placeholder={sessionStatus === 'CONNECTED' ? "Type your message..." : "Connect call to type"}
                       className="flex-1 mt-1 bg-transparent outline-none text-white placeholder:text-white placeholder:opacity-50 text-sm"
                       disabled={sessionStatus !== 'CONNECTED'}
                     />
-                    <button onClick={handleSend} className="ml-2 mt-1 text-white disabled:opacity-50" disabled={sessionStatus !== 'CONNECTED' || !inputValue.trim()}> <Send size={18} /> </button>
+                    <motion.button 
+                      onClick={handleSend} 
+                      className="ml-2 mt-1 text-white disabled:opacity-50 transition-all duration-100" 
+                      disabled={sessionStatus !== 'CONNECTED' || !inputValue.trim()}
+                      whileTap={{ scale: 0.9 }}
+                      whileHover={{ scale: 1.1 }}
+                    > 
+                      <Send size={18} /> 
+                    </motion.button>
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
-            <div className="flex justify-between items-center p-3 bg-blue-900">
-              <button onClick={toggleInput} className="bg-[#47679D] p-3 rounded-full hover:bg-blue-600 transition-colors"> <MessageSquare size={20} /> </button>
-              <div className="flex justify-center space-x-1"> {Array(15).fill(0).map((_, i) => (<div key={i} className="w-1 h-1 bg-white rounded-full opacity-50"></div>))} </div>
-              <button 
-                onClick={toggleMic} 
-                className={`p-3 rounded-full transition-colors ${micMuted ? 'bg-gray-600' : 'bg-[#47679D] hover:bg-blue-600'}`}
+            <motion.div 
+              className="flex justify-between items-center p-3 bg-blue-900"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={INSTANT_TRANSITION}
+            >
+              <motion.button 
+                onClick={debouncedToggleInput} 
+                className="bg-[#47679D] p-3 rounded-full hover:bg-blue-600 transition-all duration-100 active:scale-95" 
+                whileTap={{ scale: 0.95 }}
+                whileHover={{ scale: 1.05 }}
+              > 
+                <MessageSquare size={20} /> 
+              </motion.button>
+              
+              <div className="flex justify-center space-x-1"> 
+                {Array(15).fill(0).map((_, i) => (
+                  <div key={i} className="w-1 h-1 bg-white rounded-full opacity-50"></div>
+                ))} 
+              </div>
+              
+              <motion.button 
+                onClick={debouncedToggleMic} 
+                className={`p-3 rounded-full transition-all duration-100 active:scale-95 ${micMuted ? 'bg-gray-600' : 'bg-[#47679D] hover:bg-blue-600'}`}
                 disabled={sessionStatus !== 'CONNECTED'}
                 title={micMuted ? "Mic Off" : "Mic On"}
-              > {micMuted ? <MicOff size={20} /> : <Mic size={20} />} </button>
-              <button 
-                onClick={handleCallButtonClick}
-                className={`${sessionStatus === 'CONNECTED' ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'} p-3 rounded-full transition-colors disabled:opacity-70`}
+                whileTap={{ scale: 0.95 }}
+                whileHover={{ scale: sessionStatus === 'CONNECTED' ? 1.05 : 1 }}
+              > 
+                {micMuted ? <MicOff size={20} /> : <Mic size={20} />} 
+              </motion.button>
+              
+              <motion.button 
+                onClick={debouncedHandleCallButtonClick}
+                className={`${sessionStatus === 'CONNECTED' ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'} p-3 rounded-full transition-all duration-100 disabled:opacity-70 active:scale-95`}
                 disabled={sessionStatus === 'CONNECTING' || (!chatbotId && sessionStatus === 'DISCONNECTED')}
+                whileTap={{ scale: 0.95 }}
+                whileHover={{ scale: 1.05 }}
               >
-                {sessionStatus === 'CONNECTING' ? <Loader size={18} className="animate-spin"/> : sessionStatus === 'CONNECTED' ? <PhoneOff size={18} /> : <Phone size={18} />}
-              </button>
-            </div>
+                {sessionStatus === 'CONNECTING' ? (
+                  <Loader size={18} className="animate-spin"/>
+                ) : sessionStatus === 'CONNECTED' ? (
+                  <PhoneOff size={18} />
+                ) : (
+                  <Phone size={18} />
+                )}
+              </motion.button>
+            </motion.div>
           </div>
         </>
       )}

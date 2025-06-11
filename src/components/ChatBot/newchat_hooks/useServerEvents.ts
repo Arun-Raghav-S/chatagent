@@ -63,7 +63,8 @@ export function useServerEvents(
   setShowVerificationScreen: (show: boolean) => void,
   selectedTime: string | null,
   selectedDay: string,
-  prevAgentNameRef: React.MutableRefObject<string | null>
+  prevAgentNameRef: React.MutableRefObject<string | null>,
+  setMicMuted: Dispatch<SetStateAction<boolean>>
 ) {
   const [bookingDetails, setBookingDetails] = useState<BookingDetails | null>(
     null
@@ -90,6 +91,7 @@ export function useServerEvents(
     setLocationMapData,
     setBookingDetails,
     setBrochureData,
+    setMicMuted,
   })
 
   const handleServerEvent = useCallback(
@@ -97,7 +99,17 @@ export function useServerEvents(
       let assistantMessageHandledLocally = false
       let propertiesHandledLocally = false
 
-      if (isLoadingProperties) {
+      // CRITICAL: Skip all property operations when in authentication mode
+      if (selectedAgentName === "authentication" && (
+          serverEvent.type === "conversation.item.created" && 
+          serverEvent.item?.type === "function_call_output" &&
+          (serverEvent.item as any)?.name === "getProjectDetails"
+        )) {
+        console.log("[handleServerEvent] 🔐 AUTHENTICATION MODE: Skipping property operations to preserve verification UI")
+        return
+      }
+
+      if (isLoadingProperties && selectedAgentName !== "authentication") {
         console.log(
           "[handleServerEvent] Properties are already being loaded, skipping duplicate loading"
         )

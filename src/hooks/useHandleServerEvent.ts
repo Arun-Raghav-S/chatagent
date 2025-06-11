@@ -1,7 +1,7 @@
 "use client";
 
 import { ServerEvent, SessionStatus, AgentConfig, TranscriptItem, AgentMetadata } from "@/types/types"; // Adjusted import path, added TranscriptItem and AgentMetadata
-import { useRef, useEffect, useState, Dispatch, SetStateAction } from "react";
+import { useRef, useEffect, useState, Dispatch, SetStateAction, useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 // Helper function to create safe IDs (must be 32 chars or less)
@@ -57,6 +57,9 @@ export interface UseHandleServerEventParams {
   setLocationMapData: Dispatch<SetStateAction<any | null>>;
   setBookingDetails: Dispatch<SetStateAction<any | null>>;
   setBrochureData: Dispatch<SetStateAction<any | null>>;
+  
+  // --- Mic control for authentication flow ---
+  setMicMuted: Dispatch<SetStateAction<boolean>>;
 }
 
 // AUTOMATIC QUESTION COUNTING LOGIC - NO AGENT DEPENDENCY
@@ -125,6 +128,8 @@ export function useHandleServerEvent({
   setLocationMapData,
   setBookingDetails,
   setBrochureData,
+  // Mic control
+  setMicMuted,
 }: UseHandleServerEventParams) {
   // Removed context hook calls
   // const { logServerEvent } = useEvent(); // Placeholder call - Logging can be added back if needed
@@ -138,12 +143,12 @@ export function useHandleServerEvent({
   // Add a new ref to track if we're currently transferring agents
   const isTransferringAgentRef = useRef(false);
   const agentBeingTransferredToRef = useRef<string | null>(null); // Added ref
+  
+  // Track authentication state - simple approach  
+  const authenticationTriggeredRef = useRef(false);
 
   // Track scheduling context across function calls
   const lastDetectionResultRef = useRef<{isScheduleRequest?: boolean, detectedProperty?: string} | null>(null);
-  
-  // Track pending questions that should be filtered from UI
-  const pendingQuestionsToFilterRef = useRef<Set<string>>(new Set());
 
   const handleFunctionCall = async (functionCallParams: {
     name: string;
@@ -922,10 +927,7 @@ export function useHandleServerEvent({
                   console.log(`🚨🚨🚨 [PENDING QUESTION] Sending pending question immediately: "${pendingQuestion}"`);
                   
                   // Store the pending question for filtering from UI
-                  if (pendingQuestion && pendingQuestion.trim()) {
-                    pendingQuestionsToFilterRef.current.add(pendingQuestion.trim());
-                    console.log(`🔍 [PENDING QUESTION] Added to filter list: "${pendingQuestion.trim()}"`);
-                  }
+                  // No longer using pending question filtering in simple auth approach
                   
                   // Clear the flow context to prevent loops
                   if (newAgentConfig.metadata) {
@@ -1265,83 +1267,17 @@ export function useHandleServerEvent({
                 console.log(`🚨🚨🚨 [Auto Counter] ✅ QUESTION COUNT INCREMENTED TO: ${questionCount}`);
                 console.log(`🚨🚨🚨 [Auto Counter] Message that triggered count: "${text}"`);
                 
-                console.log(`🚨🚨🚨 [Auto Counter] Should trigger auth? Count >= 3: ${questionCount >= 3}, Not verified: ${!isVerified}`);
+                console.log(`🚨🚨🚨 [Auto Counter] Should trigger auth? Count >= 2: ${questionCount >= 2}, Not verified: ${!isVerified}`);
                 
-                if (questionCount >= 3) {
+                                if (questionCount >= 2 && !authenticationTriggeredRef.current) {
                   console.log(`🚨🚨🚨 [AUTH TRIGGER] 🔥🔥🔥 AUTHENTICATION REQUIRED! Questions: ${questionCount}`);
                   
-                  // Find authentication agent
-                  const authAgent = selectedAgentConfigSet?.find(a => a.name === 'authentication');
-                  console.log(`🚨🚨🚨 [AUTH TRIGGER] Auth agent found:`, !!authAgent);
+                  // Mark authentication as triggered to prevent duplicate triggers
+                  authenticationTriggeredRef.current = true;
                   
-                  if (authAgent) {
-                    console.log(`🚨🚨🚨 [AUTH TRIGGER] Preparing to transfer to authentication agent`);
-                    
-                    // Prepare metadata for authentication agent
-                    const newAgentMetadata: AgentMetadata = {
-                      ...(currentAgent.metadata || {}),
-                      ...(authAgent.metadata || {}),
-                      // Preserve critical fields
-                      chatbot_id: currentAgent.metadata?.chatbot_id || authAgent.metadata?.chatbot_id,
-                      org_id: currentAgent.metadata?.org_id || authAgent.metadata?.org_id,
-                      session_id: currentAgent.metadata?.session_id || authAgent.metadata?.session_id,
-                      language: currentAgent.metadata?.language || authAgent.metadata?.language || "English",
-                      // Set authentication context
-                      flow_context: 'from_question_auth',
-                      came_from: 'realEstate',
-                      pending_question: text,
-                    } as any; // Use any to include user_question_count
-                    
-                    (newAgentMetadata as any).user_question_count = questionCount;
-                    
-                    authAgent.metadata = newAgentMetadata;
-                    
-                    console.log(`🚨🚨🚨 [AUTH TRIGGER] Metadata prepared:`, {
-                      flow_context: (newAgentMetadata as any).flow_context,
-                      came_from: (newAgentMetadata as any).came_from,
-                      pending_question: (newAgentMetadata as any).pending_question,
-                      user_question_count: (newAgentMetadata as any).user_question_count
-                    });
-                    
-                    // Switch to authentication agent
-                    setSelectedAgentName('authentication');
-                    setAgentMetadata(newAgentMetadata);
-                    setActiveDisplayMode('VERIFICATION_FORM');
-                    
-                    console.log(`🚨🚨🚨 [AUTH TRIGGER] ✅ SWITCHED TO AUTHENTICATION AGENT`);
-                                      console.log(`🚨🚨🚨 [AUTH TRIGGER] Pending question: "${text}"`);
+                  console.log(`🚨🚨🚨 [AUTH TRIGGER] Waiting for agent response to complete naturally...`);
+                  // Don't switch immediately - let the current response complete naturally
                   
-                  // Store the pending question for filtering
-                  if (text && text.trim()) {
-                    pendingQuestionsToFilterRef.current.add(text.trim());
-                    console.log(`🔍 [PENDING QUESTION] Added to filter list: "${text.trim()}"`);
-                  }
-                  
-                  // Send simulated message to trigger authentication flow
-                    setTimeout(() => {
-                      const simulatedAuthMessageId = generateSafeId();
-                      console.log(`🚨🚨🚨 [AUTH TRIGGER] Sending simulated auth message`);
-                      
-                      sendClientEvent({
-                        type: "conversation.item.create",
-                        item: {
-                          id: simulatedAuthMessageId,
-                          type: "message",
-                          role: "user",
-                          content: [{ type: "input_text", text: "I need to verify my details" }]
-                        }
-                      }, "(auto-trigger authentication)");
-                      
-                      setTimeout(() => {
-                        console.log(`🚨🚨🚨 [AUTH TRIGGER] Triggering auth response`);
-                        sendClientEvent({ type: "response.create" }, "(auto-trigger auth response)");
-                      }, 100);
-                    }, 200);
-                    
-                    console.log(`🚨🚨🚨 [AUTH TRIGGER] Authentication initiated successfully`);
-                  } else {
-                    console.error(`🚨🚨🚨 [AUTH TRIGGER] ❌ Authentication agent not found!`);
-                  }
                 } else {
                   console.log(`🚨🚨🚨 [Auto Counter] No auth needed - continuing normal flow`);
                 }
@@ -1423,18 +1359,7 @@ export function useHandleServerEvent({
           break; // Don't add internal messages to the visible transcript
         }
 
-        // Filter out pending questions that are sent after authentication
-        // These are real user questions that were stored and replayed, but we don't want to show them twice
-        // IMPORTANT: Don't filter pending questions entirely - they need to reach the agent for processing
-        // Instead, we'll handle UI filtering in the transcript display component
-        if (role === "user" && text && pendingQuestionsToFilterRef.current.has(text.trim())) {
-          console.log(`[Transcript] Found pending question, allowing agent processing but marking for UI filtering: "${text}"`);
-          // Remove from filter set after finding (one-time use)
-          pendingQuestionsToFilterRef.current.delete(text.trim());
-          console.log(`[Transcript] Removed from pending filter list: "${text.trim()}"`);
-          // Allow the message to continue to the agent for processing
-          // UI filtering will be handled elsewhere
-        }
+        // No longer using pending question filtering with simple auth approach
 
         // Filter out TRIGGER_BOOKING_CONFIRMATION from transcript - it's an internal trigger
         if (role === "user" && text === "TRIGGER_BOOKING_CONFIRMATION") {
@@ -1685,83 +1610,16 @@ export function useHandleServerEvent({
               // Check if authentication should be triggered (use non-async version)
               const isVerified = currentAgent?.metadata?.is_verified ?? false;
               console.log(`🚨🚨🚨 [Auto Counter] Verification status: ${isVerified}`);
-              console.log(`🚨🚨🚨 [Auto Counter] Should trigger auth? Count >= 3: ${questionCount >= 3}, Not verified: ${!isVerified}`);
+              console.log(`🚨🚨🚨 [Auto Counter] Should trigger auth? Count >= 2: ${questionCount >= 2}, Not verified: ${!isVerified}`);
               
-              if (!isVerified && questionCount >= 3) {
+              if (!isVerified && questionCount >= 2 && !authenticationTriggeredRef.current) {
                 console.log(`🚨🚨🚨 [AUTH TRIGGER] 🔥🔥🔥 AUTHENTICATION REQUIRED! Questions: ${questionCount}`);
                 
-                // Find authentication agent
-                const authAgent = selectedAgentConfigSet?.find(a => a.name === 'authentication');
-                console.log(`🚨🚨🚨 [AUTH TRIGGER] Auth agent found:`, !!authAgent);
+                // Mark authentication as triggered - actual auth will happen in response.done
+                authenticationTriggeredRef.current = true;
                 
-                if (authAgent) {
-                  console.log(`🚨🚨🚨 [AUTH TRIGGER] Preparing to transfer to authentication agent`);
-                  
-                  // Prepare metadata for authentication agent
-                  const newAgentMetadata: AgentMetadata = {
-                    ...(currentAgent.metadata || {}),
-                    ...(authAgent.metadata || {}),
-                    // Preserve critical fields
-                    chatbot_id: currentAgent.metadata?.chatbot_id || authAgent.metadata?.chatbot_id,
-                    org_id: currentAgent.metadata?.org_id || authAgent.metadata?.org_id,
-                    session_id: currentAgent.metadata?.session_id || authAgent.metadata?.session_id,
-                    language: currentAgent.metadata?.language || authAgent.metadata?.language || "English",
-                    // Set authentication context
-                    flow_context: 'from_question_auth',
-                    came_from: 'realEstate',
-                    pending_question: finalTranscript,
-                  } as any; // Use any to include user_question_count
-                  
-                  (newAgentMetadata as any).user_question_count = questionCount;
-                  
-                  authAgent.metadata = newAgentMetadata;
-                  
-                  console.log(`🚨🚨🚨 [AUTH TRIGGER] Metadata prepared:`, {
-                    flow_context: (newAgentMetadata as any).flow_context,
-                    came_from: (newAgentMetadata as any).came_from,
-                    pending_question: (newAgentMetadata as any).pending_question,
-                    user_question_count: (newAgentMetadata as any).user_question_count
-                  });
-                  
-                  // Switch to authentication agent
-                  setSelectedAgentName('authentication');
-                  setAgentMetadata(newAgentMetadata);
-                  setActiveDisplayMode('VERIFICATION_FORM');
-                  
-                  console.log(`🚨🚨🚨 [AUTH TRIGGER] ✅ SWITCHED TO AUTHENTICATION AGENT`);
-                  console.log(`🚨🚨🚨 [AUTH TRIGGER] Pending question: "${finalTranscript}"`);
-                  
-                  // Store the pending question for filtering
-                  if (finalTranscript && finalTranscript.trim()) {
-                    pendingQuestionsToFilterRef.current.add(finalTranscript.trim());
-                    console.log(`🔍 [PENDING QUESTION] Added to filter list: "${finalTranscript.trim()}"`);
-                  }
-                  
-                  // Send simulated message to trigger authentication flow
-                  setTimeout(() => {
-                    const simulatedAuthMessageId = generateSafeId();
-                    console.log(`🚨🚨🚨 [AUTH TRIGGER] Sending simulated auth message`);
-                    
-                    sendClientEvent({
-                      type: "conversation.item.create",
-                      item: {
-                        id: simulatedAuthMessageId,
-                        type: "message",
-                        role: "user",
-                        content: [{ type: "input_text", text: "I need to verify my details" }]
-                      }
-                    }, "(auto-trigger authentication)");
-                    
-                    setTimeout(() => {
-                      console.log(`🚨🚨🚨 [AUTH TRIGGER] Triggering auth response`);
-                      sendClientEvent({ type: "response.create" }, "(auto-trigger auth response)");
-                    }, 100);
-                  }, 200);
-                  
-                  console.log(`🚨🚨🚨 [AUTH TRIGGER] Authentication initiated successfully`);
-                } else {
-                  console.error(`🚨🚨🚨 [AUTH TRIGGER] ❌ Authentication agent not found!`);
-                }
+                console.log(`🚨🚨🚨 [AUTH TRIGGER] ⏳ WAITING for agent response to complete in response.done handler...`);
+                // Don't trigger authentication here - let response complete naturally
               } else {
                 console.log(`🚨🚨🚨 [Auto Counter] No auth needed - continuing normal flow`);
               }
@@ -1829,6 +1687,48 @@ export function useHandleServerEvent({
         // 🚨 LOG EVERY RESPONSE.DONE EVENT WITH AGENT NAME
         console.log(`✅ [RESPONSE COMPLETE] ${currentAgentNameInResponse.toUpperCase()} finished response`);
         console.log(`[Server Event Hook] Response done. Agent: ${currentAgentNameInResponse}. Transferring flag: ${isTransferringAgentRef.current}, Target: ${agentBeingTransferredToRef.current}`);
+        
+        // Simple authentication trigger after 2nd question response completes
+        if (authenticationTriggeredRef.current && !isTransferringAgentRef.current && currentAgentNameInResponse === 'realEstate') {
+          console.log(`🚨🚨🚨 [SIMPLE AUTH] Response completed - triggering authentication`);
+          
+          // Find authentication agent
+          const authAgent = selectedAgentConfigSet?.find((a: any) => a.name === 'authentication');
+          const currentAgent = selectedAgentConfigSet?.find(a => a.name === selectedAgentName);
+          
+          if (authAgent && currentAgent) {
+            // Disable mic to prevent new input during transition
+            console.log(`🚨🚨🚨 [MIC CONTROL] Disabling mic for authentication transition`);
+            setMicMuted(true);
+            
+            setTimeout(() => {
+              // Prepare metadata for authentication agent
+              const newAgentMetadata: AgentMetadata = {
+                ...(currentAgent.metadata || {}),
+                ...(authAgent.metadata || {}),
+                // Preserve critical fields
+                chatbot_id: currentAgent.metadata?.chatbot_id || authAgent.metadata?.chatbot_id,
+                org_id: currentAgent.metadata?.org_id || authAgent.metadata?.org_id,
+                session_id: currentAgent.metadata?.session_id || authAgent.metadata?.session_id,
+                language: currentAgent.metadata?.language || authAgent.metadata?.language || "English",
+                // Set authentication context
+                flow_context: 'from_question_auth',
+                came_from: 'realEstate',
+              } as any;
+              
+              authAgent.metadata = newAgentMetadata;
+              
+              // Switch to authentication agent
+              setSelectedAgentName('authentication');
+              setAgentMetadata(newAgentMetadata);
+              setActiveDisplayMode('VERIFICATION_FORM');
+              
+              console.log(`🚨🚨🚨 [SIMPLE AUTH] ✅ SWITCHED TO AUTHENTICATION AGENT`);
+              
+              // Mic will be re-enabled when auth UI is ready (in component)
+            }, 500);
+          }
+        }
         
         // Log additional response details
         const responseDetails = serverEvent.response as any || {};
@@ -2052,6 +1952,7 @@ export function useHandleServerEvent({
     setSimulatedMessageId: (id: string) => { simulatedMessageIdRef.current = id; }
   };
 }
+
 
 // Add this helper function near the bottom of the file, outside other functions
 function getAgentDefaultUiHint(agentName: string): string {

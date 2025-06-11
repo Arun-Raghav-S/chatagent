@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, memo, useCallback } from 'react';
 
 type VoiceWaveformProps = {
   active?: boolean;
@@ -12,7 +12,7 @@ type VoiceWaveformProps = {
   mediaStream?: MediaStream | null;
 };
 
-export function VoiceWaveform({
+function VoiceWaveformComponent({
   active = true,
   barCount = 25, // Number of animated bars
   dotCount = 0, // Number of dots
@@ -80,21 +80,23 @@ export function VoiceWaveform({
     return cleanup;
   }, [mediaStream, active]);
 
+  // Optimized audio detection with useCallback
+  const isAudioPlaying = useCallback(() => {
+    return mediaStream !== null && mediaStream.active;
+  }, [mediaStream]);
+
   // Animation effect that uses audio volume if available, or falls back to simulation
   useEffect(() => {
     if (!active) {
       cancelAnimationFrame(animationRef.current);
-      // Reset bars to minimal height when inactive
-      barsRef.current.forEach(bar => {
-        if (bar) bar.style.height = '4px';
+      // Reset bars to minimal height when inactive - optimized
+      requestAnimationFrame(() => {
+        barsRef.current.forEach(bar => {
+          if (bar) bar.style.height = '4px';
+        });
       });
       return;
     }
-
-    // Function to detect if audio is actually playing
-    const isAudioPlaying = () => {
-      return mediaStream !== null && mediaStream.active;
-    };
 
     const animateBars = () => {
       // Create a simulated audio pattern that approximates speech
@@ -235,3 +237,15 @@ export function VoiceWaveform({
     </div>
   );
 }
+
+// Memoize the component to prevent unnecessary re-renders
+export const VoiceWaveform = memo(VoiceWaveformComponent, (prevProps, nextProps) => {
+  // Only re-render if critical props change
+  return (
+    prevProps.active === nextProps.active &&
+    prevProps.mediaStream === nextProps.mediaStream &&
+    prevProps.barCount === nextProps.barCount &&
+    prevProps.color === nextProps.color &&
+    prevProps.maxHeight === nextProps.maxHeight
+  );
+});

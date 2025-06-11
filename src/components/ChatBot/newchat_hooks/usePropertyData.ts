@@ -22,7 +22,8 @@ export function usePropertyData(
   sendTriggerMessage: (triggerText: string) => void,
   sessionStatus: string,
   transcriptItems: TranscriptItem[],
-  initialSessionSetupDoneRef: React.MutableRefObject<boolean>
+  initialSessionSetupDoneRef: React.MutableRefObject<boolean>,
+  selectedAgentName?: string
 ) {
   const [propertyListData, setPropertyListData] = useState<
     PropertyProps[] | null
@@ -236,6 +237,15 @@ export function usePropertyData(
 
   // Effect to monitor transcript for property-related queries
   useEffect(() => {
+    // CRITICAL: Skip property loading during authentication to preserve verification UI
+    const isInAuthenticationFlow = selectedAgentName === "authentication" || 
+                                  (agentMetadata as any)?.flow_context === "from_question_auth"
+    
+    if (isInAuthenticationFlow) {
+      console.log("[Effect] 🔐 AUTHENTICATION MODE: Skipping property loading to preserve verification UI")
+      return
+    }
+
     if (
       sessionStatus === "CONNECTED" &&
       !propertyListData &&
@@ -340,6 +350,8 @@ export function usePropertyData(
     isLoadingProperties,
     handleGetAllProperties,
     initialSessionSetupDoneRef,
+    selectedAgentName,
+    agentMetadata,
   ])
 
   return {

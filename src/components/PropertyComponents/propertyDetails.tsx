@@ -1,8 +1,13 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, memo, useCallback } from "react"
+import { motion } from "framer-motion"
 import { X, ExternalLink, MapPin, Maximize2 } from "lucide-react"
 import ImageCarousel from "./imageCarousel"
+
+// Optimized animation configurations
+const FAST_TRANSITION = { duration: 0.1, ease: "easeOut" }
+const INSTANT_TRANSITION = { duration: 0.05, ease: "easeOut" }
 
 interface PropertyUnit {
   type: string
@@ -95,7 +100,7 @@ const getMapUrl = (location: PropertyLocation | undefined) => {
   return null;
 };
 
-export default function PropertyDetails({
+function PropertyDetails({
   id,
   name,
   price,
@@ -114,7 +119,30 @@ export default function PropertyDetails({
   const [showImageCarousel, setShowImageCarousel] = useState(false)
   const [carouselIndex, setCarouselIndex] = useState(0)
   // Track failed images to prevent repeated errors
-  const failedImages = useRef<Set<string>>(new Set());
+  const failedImages = useRef<Set<string>>(new Set())
+
+  // Optimized handlers with useCallback
+  const handleClose = useCallback(() => {
+    onClose()
+  }, [onClose])
+
+  const handleScheduleVisit = useCallback(() => {
+    if (onScheduleVisit) {
+      onScheduleVisit({
+        id, name, price, area, location, mainImage, galleryImages,
+        units, amenities, description, websiteUrl, brochure, onClose, onScheduleVisit
+      })
+    }
+  }, [onScheduleVisit, id, name, price, area, location, mainImage, galleryImages, units, amenities, description, websiteUrl, brochure, onClose])
+
+  const handleImageCarouselOpen = useCallback((index: number) => {
+    setCarouselIndex(index)
+    setShowImageCarousel(true)
+  }, [])
+
+  const handleImageCarouselClose = useCallback(() => {
+    setShowImageCarousel(false)
+  }, []);
 
   // Process images for the carousel
   const allImages: PropertyImage[] = [];
@@ -152,27 +180,46 @@ export default function PropertyDetails({
 
 
   return (
-    <div className="overflow-hidden rounded-lg text-black">
+    <motion.div 
+      className="overflow-hidden rounded-lg text-black"
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={FAST_TRANSITION}
+    >
       {/* Image Carousel */}
       {showImageCarousel && (
-        <div className="fixed inset-0 z-50">
+        <motion.div 
+          className="fixed inset-0 z-50"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={INSTANT_TRANSITION}
+        >
           <ImageCarousel
             images={allImages}
             initialIndex={carouselIndex}
-            onClose={() => setShowImageCarousel(false)}
+            onClose={handleImageCarouselClose}
           />
-        </div>
+        </motion.div>
       )}
       
       {/* Main Container */}
-      <div className="bg-white rounded-lg overflow-hidden flex flex-col h-[490px]">
+      <motion.div 
+        className="bg-white rounded-lg overflow-hidden flex flex-col h-[490px]"
+        initial={{ y: 20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={FAST_TRANSITION}
+      >
         {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-1 right-1 z-10 bg-white rounded-full p-1 shadow-md"
+        <motion.button
+          onClick={handleClose}
+          className="absolute top-1 right-1 z-10 bg-white rounded-full p-1 shadow-md transition-all duration-100 hover:bg-gray-100 active:scale-95"
+          whileTap={{ scale: 0.9 }}
+          whileHover={{ scale: 1.05 }}
         >
           <X size={18} />
-        </button>
+        </motion.button>
         
         {/* Header Image */}
         <div className="relative h-48">
@@ -184,15 +231,14 @@ export default function PropertyDetails({
           />
           
           {/* Fullscreen button */}
-          <button
-            onClick={() => {
-              setCarouselIndex(0)
-              setShowImageCarousel(true)
-            }}
-            className="absolute bottom-2 right-2 bg-white rounded-full p-1 shadow-md"
+          <motion.button
+            onClick={() => handleImageCarouselOpen(0)}
+            className="absolute bottom-2 right-2 bg-white rounded-full p-1 shadow-md transition-all duration-100 hover:bg-gray-100 active:scale-95"
+            whileTap={{ scale: 0.9 }}
+            whileHover={{ scale: 1.05 }}
           >
             <Maximize2 size={16} />
-          </button>
+          </motion.button>
           
           {/* Photo gallery thumbnails */}
           {galleryImages && galleryImages.length > 0 && (
@@ -324,14 +370,16 @@ export default function PropertyDetails({
           )}
         </div>
         
-        {/* Actions */}
+                  {/* Actions */}
         <div className="p-3 border-t border-gray-200 flex justify-between">
-          <button
-            onClick={() => onScheduleVisit?.({ id, name, price, area, location, mainImage, galleryImages, units, amenities, description, websiteUrl, brochure, onClose })}
-            className="bg-blue-600 text-white px-4 py-2 rounded font-medium flex-1"
+          <motion.button
+            onClick={handleScheduleVisit}
+            className="bg-blue-600 text-white px-4 py-2 rounded font-medium flex-1 transition-all duration-100 hover:bg-blue-700 active:scale-95"
+            whileTap={{ scale: 0.95 }}
+            whileHover={{ scale: 1.02 }}
           >
             Schedule a Visit
-          </button>
+          </motion.button>
           
           {brochure && (
             <button 
@@ -346,7 +394,20 @@ export default function PropertyDetails({
             </button>
           )}
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }
+
+// Memoize the component to prevent unnecessary re-renders
+export default memo(PropertyDetails, (prevProps, nextProps) => {
+  // Re-render if any of the key props change
+  return (
+    prevProps.id === nextProps.id &&
+    prevProps.name === nextProps.name &&
+    prevProps.mainImage === nextProps.mainImage &&
+    prevProps.galleryImages === nextProps.galleryImages &&
+    prevProps.onClose === nextProps.onClose &&
+    prevProps.onScheduleVisit === nextProps.onScheduleVisit
+  )
+})

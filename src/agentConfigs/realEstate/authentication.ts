@@ -340,6 +340,16 @@ const authenticationAgent: AgentConfig = {
 
     completeScheduling: async () => {
       return await completeScheduling(authenticationAgent);
+    },
+
+    // Mock tool to handle brochure requests during authentication
+    showPropertyBrochure: async ({ property_name }: { property_name: string }) => {
+      return {
+        message: "I'll help you with the brochure right after we complete your verification. Please continue with the verification process first.",
+        error: null,
+        destination_agent: "authentication",
+        ui_display_hint: "VERIFICATION_FORM"
+      };
     }
   }
 };
