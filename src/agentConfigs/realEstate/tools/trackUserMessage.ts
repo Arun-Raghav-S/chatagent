@@ -76,9 +76,9 @@ const incrementQuestionCountAndCheckAuth = (realEstateAgent: any, userMessage: s
     const questionCount = metadata.user_question_count;
     const isVerified = metadata.is_verified;
     
-    // Trigger authentication only after 3 real user questions for unverified users
-    // This allows users to ask 2 questions freely before requiring verification
-    if (!isVerified && questionCount >= 3) {
+    // Trigger authentication only after 6 real user questions for unverified users
+    // This allows users to ask 5 questions freely before requiring verification
+    if (!isVerified && questionCount >= 6) {
         console.log(`🔍 [QuestionCounter] AUTHENTICATION THRESHOLD REACHED! Questions: ${questionCount}, Verified: ${isVerified}`);
         console.log(`🔍 [QuestionCounter] Triggering authentication flow for pending question: "${userMessage}"`);
         
@@ -113,8 +113,8 @@ export const checkAuthenticationOnly = (realEstateAgent: any, toolName: string) 
     
     console.log(`🔍 [checkAuthenticationOnly] Tool: ${toolName}, Questions: ${questionCount}, Verified: ${isVerified}`);
     
-    // Check if authentication is needed (after 3 questions without verification)
-    if (!isVerified && questionCount >= 3) {
+    // Check if authentication is needed (after 6 questions without verification)
+    if (!isVerified && questionCount >= 6) {
         console.log(`🔍 [checkAuthenticationOnly] Authentication required for ${toolName} - Questions: ${questionCount}, Verified: ${isVerified}`);
         
         return {

@@ -1382,9 +1382,9 @@ export function useHandleServerEvent({
                 console.log(`🚨🚨🚨 [Auto Counter] ✅ QUESTION COUNT INCREMENTED TO: ${questionCount}`);
                 console.log(`🚨🚨🚨 [Auto Counter] Message that triggered count: "${text}"`);
                 
-                console.log(`🚨🚨🚨 [Auto Counter] Should trigger auth? Count >= 2: ${questionCount >= 2}, Not verified: ${!isVerified}`);
+                console.log(`🚨🚨🚨 [Auto Counter] Should trigger auth? Count >= 6: ${questionCount >= 6}, Not verified: ${!isVerified}, Agent: ${selectedAgentName}`);
                 
-                                if (questionCount >= 2 && !authenticationTriggeredRef.current) {
+                                if (questionCount >= 6 && !authenticationTriggeredRef.current && String(selectedAgentName) !== "scheduleMeeting") {
                   console.log(`🚨🚨🚨 [AUTH TRIGGER] 🔥🔥🔥 AUTHENTICATION REQUIRED! Questions: ${questionCount}`);
                   
                   // Mark authentication as triggered to prevent duplicate triggers
@@ -1751,9 +1751,9 @@ export function useHandleServerEvent({
               // Check if authentication should be triggered (use non-async version)
               const isVerified = currentAgent?.metadata?.is_verified ?? false;
               console.log(`🚨🚨🚨 [Auto Counter] Verification status: ${isVerified}`);
-              console.log(`🚨🚨🚨 [Auto Counter] Should trigger auth? Count >= 2: ${questionCount >= 2}, Not verified: ${!isVerified}`);
+              console.log(`🚨🚨🚨 [Auto Counter] Should trigger auth? Count >= 6: ${questionCount >= 6}, Not verified: ${!isVerified}, Agent: ${selectedAgentName}`);
               
-              if (!isVerified && questionCount >= 2 && !authenticationTriggeredRef.current) {
+              if (!isVerified && questionCount >= 6 && !authenticationTriggeredRef.current && String(selectedAgentName) !== "scheduleMeeting") {
                 console.log(`🚨🚨🚨 [AUTH TRIGGER] 🔥🔥🔥 AUTHENTICATION REQUIRED! Questions: ${questionCount}`);
                 
                 // Mark authentication as triggered - actual auth will happen in response.done
