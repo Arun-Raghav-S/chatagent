@@ -56,12 +56,16 @@ const VerificationForm: React.FC<VerificationFormProps> = ({ onSubmit }) => {
   const [countryCode, setCountryCode] = useState("+91");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Optimized submit handler with debouncing protection
+  // Optimized submit handler with better debouncing protection
   const handleSubmit = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
-    if (isSubmitting || !name.trim() || !phone.trim()) return;
+    if (isSubmitting || !name.trim() || !phone.trim()) {
+      console.log("🔐 [Verification Form] Submit blocked:", { isSubmitting, name: !!name.trim(), phone: !!phone.trim() });
+      return;
+    }
     
+    console.log("🔐 [Verification Form] Starting submission...");
     setIsSubmitting(true);
     
     try {
@@ -70,14 +74,13 @@ const VerificationForm: React.FC<VerificationFormProps> = ({ onSubmit }) => {
       
       // Call the onSubmit callback immediately for better UX
       if (onSubmit) {
-        onSubmit(name.trim(), fullPhoneNumber);
+        await onSubmit(name.trim(), fullPhoneNumber);
       }
     } catch (error) {
       console.error("🔐 [Verification Form] Submission error:", error);
-    } finally {
-      // Reset after a short delay to prevent multiple submissions
-      setTimeout(() => setIsSubmitting(false), 500);
+      setIsSubmitting(false); // Reset on error
     }
+    // Don't reset isSubmitting on success - let parent component handle it
   }, [name, phone, countryCode, onSubmit, isSubmitting]);
 
   // Optimized input handlers
@@ -86,12 +89,16 @@ const VerificationForm: React.FC<VerificationFormProps> = ({ onSubmit }) => {
   }, []);
 
   const handlePhoneChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setPhone(e.target.value);
+    // Only allow numbers
+    const value = e.target.value.replace(/[^\d]/g, '');
+    setPhone(value);
   }, []);
 
   const handleCountryCodeChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     setCountryCode(e.target.value);
   }, []);
+
+  const isFormValid = name.trim().length > 0 && phone.trim().length > 0;
 
   return (
     <motion.div
@@ -99,40 +106,41 @@ const VerificationForm: React.FC<VerificationFormProps> = ({ onSubmit }) => {
       initial="hidden"
       animate="visible"
       exit="exit"
-      className="p-6 bg-[#0b3d91] text-white rounded-xl w-full max-w-sm mx-auto"
+      className="p-8 bg-[#0b3d91] text-white rounded-2xl w-full max-w-md mx-auto shadow-2xl"
     >
-      <motion.h3 variants={childVariants} className="text-xl font-semibold mb-2 text-center">
+      <motion.h3 variants={childVariants} className="text-2xl font-bold mb-2 text-center">
         Verification Required
       </motion.h3>
-      <motion.p variants={childVariants} className="text-sm mb-6 text-center opacity-90">
+      <motion.p variants={childVariants} className="text-sm mb-8 text-center opacity-90 leading-relaxed">
         Please provide your contact details:
       </motion.p>
       
-      <form onSubmit={handleSubmit} className="w-full space-y-4">
-        <motion.div variants={childVariants}>
-          <label className="block text-sm font-medium mb-2">Full Name</label>
+      <form onSubmit={handleSubmit} className="w-full space-y-6">
+        <motion.div variants={childVariants} className="space-y-2">
+          <label className="block text-sm font-semibold">Full Name</label>
           <input
             type="text"
             value={name}
             onChange={handleNameChange}
-            className="w-full p-3 text-gray-900 rounded-lg bg-white placeholder-gray-500 border-0 focus:ring-2 focus:ring-blue-300 transition-all duration-150"
+            className="w-full p-4 text-gray-900 rounded-xl bg-white placeholder-gray-400 border-0 focus:ring-3 focus:ring-blue-300 transition-all duration-200 font-medium shadow-inner"
             placeholder="Enter your full name"
             required
             disabled={isSubmitting}
+            autoComplete="name"
           />
         </motion.div>
 
-        <motion.div variants={childVariants}>
-          <label className="block text-sm font-medium mb-2">Phone Number</label>
-          <div className="flex gap-2">
+        <motion.div variants={childVariants} className="space-y-2">
+          <label className="block text-sm font-semibold">Phone Number</label>
+          <div className="flex gap-3">
             <select
               value={countryCode}
               onChange={handleCountryCodeChange}
-              className="w-20 p-3 text-gray-900 rounded-lg bg-white border-0 focus:ring-2 focus:ring-blue-300 transition-all duration-150 text-sm font-medium"
+              className="w-24 p-4 text-gray-900 rounded-xl bg-white border-0 focus:ring-3 focus:ring-blue-300 transition-all duration-200 text-sm font-bold shadow-inner"
               disabled={isSubmitting}
             >
               {countryCodes.map(({ code, country }) => (
-                <option key={code} value={code} className="text-sm">
+                <option key={code} value={code} className="text-sm font-medium">
                   {code}
                 </option>
               ))}
@@ -141,13 +149,15 @@ const VerificationForm: React.FC<VerificationFormProps> = ({ onSubmit }) => {
               type="tel"
               value={phone}
               onChange={handlePhoneChange}
-              className="flex-1 p-3 text-gray-900 rounded-lg bg-white placeholder-gray-500 border-0 focus:ring-2 focus:ring-blue-300 transition-all duration-150"
+              className="flex-1 p-4 text-gray-900 rounded-xl bg-white placeholder-gray-400 border-0 focus:ring-3 focus:ring-blue-300 transition-all duration-200 font-medium shadow-inner"
               placeholder="Enter phone number"
               required
               disabled={isSubmitting}
+              autoComplete="tel"
+              maxLength={15}
             />
           </div>
-          <p className="text-xs mt-1 opacity-70">
+          <p className="text-xs opacity-75 mt-2 px-1">
             Selected: {countryCode} ({countryCodes.find(c => c.code === countryCode)?.country})
           </p>
         </motion.div>
@@ -155,19 +165,19 @@ const VerificationForm: React.FC<VerificationFormProps> = ({ onSubmit }) => {
         <motion.button
           variants={childVariants}
           type="submit"
-          disabled={!name.trim() || !phone.trim() || isSubmitting}
-          className={`w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 mt-6 ${
-            !name.trim() || !phone.trim() || isSubmitting
+          disabled={!isFormValid || isSubmitting}
+          className={`w-full py-4 px-6 rounded-xl font-bold text-lg transition-all duration-200 mt-8 shadow-lg ${
+            !isFormValid || isSubmitting
               ? "bg-gray-600 cursor-not-allowed opacity-50"
-              : "bg-white text-blue-900 hover:bg-blue-50 focus:ring-2 focus:ring-blue-300 active:scale-95"
+              : "bg-white text-blue-900 hover:bg-blue-50 focus:ring-3 focus:ring-blue-300 active:scale-98 hover:shadow-xl"
           }`}
-          whileTap={{ scale: (!name.trim() || !phone.trim() || isSubmitting) ? 1 : 0.95 }}
-          whileHover={{ scale: (!name.trim() || !phone.trim() || isSubmitting) ? 1 : 1.02 }}
+          whileTap={{ scale: (!isFormValid || isSubmitting) ? 1 : 0.98 }}
+          whileHover={{ scale: (!isFormValid || isSubmitting) ? 1 : 1.02 }}
         >
           {isSubmitting ? (
-            <span className="flex items-center justify-center gap-2">
+            <span className="flex items-center justify-center gap-3">
               <motion.div 
-                className="w-4 h-4 border-2 border-blue-900 border-t-transparent rounded-full"
+                className="w-5 h-5 border-3 border-blue-900 border-t-transparent rounded-full"
                 animate={{ rotate: 360 }}
                 transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
               />
