@@ -75,7 +75,7 @@ export default function BookingConfirmation({
           value={number}
           onChange={(e) => setNumber(e.target.value)}
           placeholder="Enter Number here"
-          className="w-full px-4 py-3 bg-[#1e4db7] text-white placeholder-white placeholder-opacity-80 rounded-3xl border-2 border-blue-500 text-sm text-center font-normal focus:outline-none"
+          className="w-full px-4 py-2.5 bg-[#1e4db7] text-white placeholder-white placeholder-opacity-80 rounded-3xl border-2 border-blue-500 text-xs text-center font-normal focus:outline-none"
         />
       </motion.div>
       <motion.div  className="space-y-3">

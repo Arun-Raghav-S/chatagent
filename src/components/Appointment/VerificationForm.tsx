@@ -106,7 +106,7 @@ const VerificationForm: React.FC<VerificationFormProps> = ({ onSubmit }) => {
       initial="hidden"
       animate="visible"
       exit="exit"
-      className="p-8 bg-[#0b3d91] text-white rounded-2xl w-full max-w-md mx-auto shadow-2xl"
+      className="p-6 mx-4 bg-[#0b3d91] text-white rounded-2xl w-full max-w-md mx-auto shadow-2xl"
     >
       <motion.h3 variants={childVariants} className="text-2xl font-bold mb-2 text-center">
         Verification Required
@@ -132,11 +132,11 @@ const VerificationForm: React.FC<VerificationFormProps> = ({ onSubmit }) => {
 
         <motion.div variants={childVariants} className="space-y-2">
           <label className="block text-sm font-semibold">Phone Number</label>
-          <div className="flex gap-3">
+          <div className="flex gap-2 w-full">
             <select
               value={countryCode}
               onChange={handleCountryCodeChange}
-              className="w-24 p-4 text-gray-900 rounded-xl bg-white border-0 focus:ring-3 focus:ring-blue-300 transition-all duration-200 text-sm font-bold shadow-inner"
+              className="w-20 p-2.5 text-gray-900 rounded-xl bg-white border-0 focus:ring-3 focus:ring-blue-300 transition-all duration-200 text-sm font-bold shadow-inner shrink-0"
               disabled={isSubmitting}
             >
               {countryCodes.map(({ code, country }) => (
@@ -149,7 +149,7 @@ const VerificationForm: React.FC<VerificationFormProps> = ({ onSubmit }) => {
               type="tel"
               value={phone}
               onChange={handlePhoneChange}
-              className="flex-1 p-4 text-gray-900 rounded-xl bg-white placeholder-gray-400 border-0 focus:ring-3 focus:ring-blue-300 transition-all duration-200 font-medium shadow-inner"
+              className="flex-1 min-w-0 p-2.5 text-gray-900 rounded-xl bg-white placeholder-gray-400 border-0 focus:ring-3 focus:ring-blue-300 transition-all duration-200 text-sm font-medium shadow-inner"
               placeholder="Enter phone number"
               required
               disabled={isSubmitting}
