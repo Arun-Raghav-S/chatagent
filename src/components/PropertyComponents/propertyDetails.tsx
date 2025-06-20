@@ -2,7 +2,7 @@
 
 import { useState, useRef, memo, useCallback } from "react"
 import { motion } from "framer-motion"
-import { X, ExternalLink, MapPin, Maximize2 } from "lucide-react"
+import { X, ExternalLink, MapPin, Maximize2, ArrowLeft } from "lucide-react"
 import ImageCarousel from "./imageCarousel"
 
 // Optimized animation configurations
@@ -43,6 +43,7 @@ interface PropertyDetailsProps {
   brochure?: string
   onClose: () => void
   onScheduleVisit?: (property: PropertyDetailsProps) => void
+  onBack?: () => void // Add back functionality
 }
 
 // Helper function to convert Google Maps URL to embed URL
@@ -114,7 +115,8 @@ function PropertyDetails({
   websiteUrl,
   brochure,
   onClose,
-  onScheduleVisit
+  onScheduleVisit,
+  onBack
 }: PropertyDetailsProps) {
   const [showImageCarousel, setShowImageCarousel] = useState(false)
   const [carouselIndex, setCarouselIndex] = useState(0)
@@ -126,14 +128,20 @@ function PropertyDetails({
     onClose()
   }, [onClose])
 
+  const handleBack = useCallback(() => {
+    if (onBack) {
+      onBack()
+    }
+  }, [onBack])
+
   const handleScheduleVisit = useCallback(() => {
     if (onScheduleVisit) {
       onScheduleVisit({
         id, name, price, area, location, mainImage, galleryImages,
-        units, amenities, description, websiteUrl, brochure, onClose, onScheduleVisit
+        units, amenities, description, websiteUrl, brochure, onClose, onScheduleVisit, onBack
       })
     }
-  }, [onScheduleVisit, id, name, price, area, location, mainImage, galleryImages, units, amenities, description, websiteUrl, brochure, onClose])
+  }, [onScheduleVisit, id, name, price, area, location, mainImage, galleryImages, units, amenities, description, websiteUrl, brochure, onClose, onBack])
 
   const handleImageCarouselOpen = useCallback((index: number) => {
     setCarouselIndex(index)
@@ -211,15 +219,32 @@ function PropertyDetails({
         animate={{ y: 0, opacity: 1 }}
         transition={FAST_TRANSITION}
       >
-        {/* Close Button */}
-        <motion.button
-          onClick={handleClose}
-          className="absolute top-1 right-1 z-10 bg-white rounded-full p-1 shadow-md transition-all duration-100 hover:bg-gray-100 active:scale-95"
-          whileTap={{ scale: 0.9 }}
-          whileHover={{ scale: 1.05 }}
-        >
-          <X size={18} />
-        </motion.button>
+        {/* Navigation Buttons */}
+        <div className="absolute top-1 right-1 z-10 flex space-x-1">
+          {/* Back Button */}
+          {onBack && (
+            <motion.button
+              onClick={handleBack}
+              className="bg-white rounded-full p-1 shadow-md transition-all duration-100 hover:bg-gray-100 active:scale-95"
+              whileTap={{ scale: 0.9 }}
+              whileHover={{ scale: 1.05 }}
+              title="Go back"
+            >
+              <ArrowLeft size={18} />
+            </motion.button>
+          )}
+          
+          {/* Close Button */}
+          <motion.button
+            onClick={handleClose}
+            className="bg-white rounded-full p-1 shadow-md transition-all duration-100 hover:bg-gray-100 active:scale-95"
+            whileTap={{ scale: 0.9 }}
+            whileHover={{ scale: 1.05 }}
+            title="Close"
+          >
+            <X size={18} />
+          </motion.button>
+        </div>
         
         {/* Header Image */}
         <div className="relative h-48">
@@ -408,6 +433,7 @@ export default memo(PropertyDetails, (prevProps, nextProps) => {
     prevProps.mainImage === nextProps.mainImage &&
     prevProps.galleryImages === nextProps.galleryImages &&
     prevProps.onClose === nextProps.onClose &&
+    prevProps.onBack === nextProps.onBack &&
     prevProps.onScheduleVisit === nextProps.onScheduleVisit
   )
 })

@@ -72,15 +72,19 @@ const VerificationForm: React.FC<VerificationFormProps> = ({ onSubmit }) => {
       const fullPhoneNumber = `${countryCode}${phone.replace(/^\+/, "")}`;
       console.log("🔐 [Verification Form] Submitting:", { name: name.trim(), phone: fullPhoneNumber });
       
-      // Call the onSubmit callback immediately for better UX
+      // Call the onSubmit callback
       if (onSubmit) {
         await onSubmit(name.trim(), fullPhoneNumber);
       }
+      
+      // Success - reset submitting state after successful submission
+      console.log("🔐 [Verification Form] ✅ Submission completed successfully");
+      setIsSubmitting(false);
+      
     } catch (error) {
       console.error("🔐 [Verification Form] Submission error:", error);
       setIsSubmitting(false); // Reset on error
     }
-    // Don't reset isSubmitting on success - let parent component handle it
   }, [name, phone, countryCode, onSubmit, isSubmitting]);
 
   // Optimized input handlers

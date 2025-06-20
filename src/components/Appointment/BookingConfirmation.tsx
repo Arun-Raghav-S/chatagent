@@ -56,7 +56,16 @@ export default function BookingConfirmation({
   const [number, setNumber] = useState<string>("")
 
   return (
-    <div className="space-y-6 max-w-sm w-full">
+    <div className="space-y-6 max-w-sm w-full relative">
+      {/* Cross button */}
+      <button
+        onClick={onClose}
+        className="absolute -top-2 -right-2 w-8 h-8 bg-gray-600 hover:bg-gray-700 text-white rounded-full flex items-center justify-center text-lg font-bold transition-colors z-10"
+        aria-label="Close"
+      >
+        ×
+      </button>
+      
       <motion.p
         className="text-xl font-normal leading-6"
       >
@@ -88,9 +97,9 @@ export default function BookingConfirmation({
         </button>
         <button
           onClick={onClose}
-          className="w-full bg-[#1e4db7] text-white py-2 rounded-lg text-lg font-normal hover:bg-[#2a5dd8] transition-colors"
+          className="w-full bg-gray-600 text-white py-2 rounded-lg text-lg font-normal hover:bg-gray-700 transition-colors"
         >
-          Cancel
+          Close
         </button>
       </motion.div>
     </div>

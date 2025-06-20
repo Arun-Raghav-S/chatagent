@@ -100,6 +100,7 @@ ${timeSelectionMessage}
 - Keep responses short and friendly
 - End turn immediately after successful booking
 - Never call tools from other agents
+- Never talk about transfering call or about the authentication agent or real estate agent to the user be silent when transfering to the authentication agent or real estate agent
 
 LANGUAGE: Respond ONLY in ${language}.`;
 };

@@ -52,6 +52,8 @@ interface UseChatHandlersProps {
   setVerificationData: (data: any) => void
   setIsVerifying: (isVerifying: boolean) => void
   setShowOtpScreen: (show: boolean) => void
+  setActiveDisplayMode: (mode: any) => void
+  setBookingDetails: (details: any) => void
   micMuted: boolean
   setMicMuted: (muted: boolean) => void
   audioContext: AudioContext | null
@@ -76,6 +78,8 @@ export function useChatHandlers({
   setVerificationData,
   setIsVerifying,
   setShowOtpScreen,
+  setActiveDisplayMode,
+  setBookingDetails,
   micMuted,
   setMicMuted,
   audioContext,
@@ -277,72 +281,253 @@ export function useChatHandlers({
     ]
   )
 
-  const handleVerificationSubmit = useCallback(
-    (name: string, phone: string) => {
+    const handleVerificationSubmit = useCallback(
+    async (name: string, phone: string) => {
       console.log(
         `[UI] User submitted verification data: name=${name}, phone=${phone}`
       )
-      setVerificationData((prev: any) => ({ ...prev, name, phone }))
-      const userMessageId = generateSafeId()
-      const detailsMessage = `My name is ${name} and my phone number is ${phone}.`
-      // Don't add verification form messages to transcript - they're UI-generated
-      if (!shouldHideUIMessage(detailsMessage)) {
-        addTranscriptMessage(userMessageId, "user", detailsMessage)
+      
+      try {
+        setVerificationData((prev: any) => ({ ...prev, name, phone }))
+        setIsVerifying(false)
+        
+        // Get current agent metadata for IDs
+        const authAgent = selectedAgentConfigSet?.find(a => a.name === "authentication")
+        const metadata = authAgent?.metadata
+        
+        if (!authAgent) {
+          throw new Error("Authentication agent not found")
+        }
+        
+        // Call submitPhoneNumber tool directly from UI
+        const { submitPhoneNumber } = await import("../../../agentConfigs/realEstate/authTools/submitPhoneNumber")
+        
+        const result = await submitPhoneNumber({
+          name,
+          phone_number: phone,
+          session_id: metadata?.session_id || "default_session",
+          org_id: metadata?.org_id || "default_org", 
+          chatbot_id: metadata?.chatbot_id || "default_chatbot"
+        }, authAgent)
+        
+        console.log("[UI] submitPhoneNumber result:", result)
+        
+        if (result.error) {
+          // Show error message from agent
+          const errorMessageId = generateSafeId()
+          addTranscriptMessage(errorMessageId, "assistant", result.message || "There was an issue sending the verification code. Please try again.")
+          throw new Error(result.message || "Failed to send verification code")
+        } else {
+          // Success - show OTP form
+          setShowOtpScreen(true)
+          setActiveDisplayMode('OTP_FORM')
+          console.log("[UI] ✅ Verification form submitted successfully, showing OTP screen")
+          
+          // Update agent metadata with user's name for personalized responses
+          if (authAgent.metadata) {
+            const metadata = authAgent.metadata as any
+            metadata.customer_name = name
+            metadata.phone_number = phone
+          }
+          
+          // 🎯 TRIGGER AGENT TO SPEAK: Send a message to authentication agent to get conversational response
+          const triggerMessageId = generateSafeId()
+          const triggerMessage = `I have provided my details: Name: ${name}, Phone: ${phone}. Please confirm the OTP has been sent.`
+          
+          // Send the trigger message to the agent
+          sendClientEvent(
+            {
+              type: "conversation.item.create",
+              item: {
+                id: triggerMessageId,
+                type: "message",
+                role: "user",
+                content: [{ type: "input_text", text: triggerMessage }],
+              },
+            },
+            "(trigger auth agent response after form submission)"
+          )
+          
+          // Trigger agent response
+          sendClientEvent(
+            { type: "response.create" },
+            "(trigger auth agent to speak about OTP sent)"
+          )
+        }
+        
+      } catch (error) {
+        console.error("[UI] Error in handleVerificationSubmit:", error)
+        const errorMessageId = generateSafeId()
+        addTranscriptMessage(errorMessageId, "assistant", "There was an unexpected error. Please try again.")
+        // Re-throw error so VerificationForm can reset its submitting state
+        throw error
       }
-      sendClientEvent(
-        {
-          type: "conversation.item.create",
-          item: {
-            id: userMessageId,
-            type: "message",
-            role: "user",
-            content: [{ type: "input_text", text: detailsMessage }],
-          },
-        },
-        "(user verification details)"
-      )
-      sendClientEvent(
-        { type: "response.create" },
-        "(trigger response after details)"
-      )
-      setIsVerifying(false)
-      setShowOtpScreen(true)
     },
     [
-      sendClientEvent,
       addTranscriptMessage,
       setVerificationData,
       setIsVerifying,
       setShowOtpScreen,
+      setActiveDisplayMode,
+      selectedAgentConfigSet,
+      sendClientEvent
     ]
   )
 
   const handleOtpSubmit = useCallback(
-    (otp: string) => {
+    async (otp: string) => {
       console.log(`[UI] User submitted OTP: ${otp}`)
-      const userMessageId = generateSafeId()
-      const otpMessage = `My verification code is ${otp}.`
-      // Don't add OTP messages to transcript - they're UI-generated
-      if (!shouldHideUIMessage(otpMessage)) {
-        addTranscriptMessage(userMessageId, "user", otpMessage)
-      }
-      sendClientEvent(
-        {
-          type: "conversation.item.create",
-          item: {
-            id: userMessageId,
-            type: "message",
-            role: "user",
-            content: [{ type: "input_text", text: otpMessage }],
-          },
-        },
-        "(user OTP submission)"
-      )
-      sendClientEvent({ type: "response.create" }, "(trigger response after OTP)")
-      setShowOtpScreen(false)
+      
+      // Show verifying message
       addTranscriptMessage(generateSafeId(), "system", "Verifying your code...")
+      
+      try {
+        // Get verification data and agent metadata
+        const authAgent = selectedAgentConfigSet?.find(a => a.name === "authentication")
+        const metadata = authAgent?.metadata
+        
+        if (!authAgent) {
+          throw new Error("Authentication agent not found")
+        }
+        
+        // Call verifyOTP tool directly from UI
+        const { verifyOTP } = await import("../../../agentConfigs/realEstate/authTools/verifyOTP")
+        
+        const result = await verifyOTP({
+          phone_number: metadata?.phone_number || "",
+          otp,
+          session_id: metadata?.session_id || "default_session",
+          org_id: metadata?.org_id || "default_org", 
+          chatbot_id: metadata?.chatbot_id || "default_chatbot"
+        }, authAgent)
+        
+        console.log("[UI] verifyOTP result:", result)
+        
+        const assistantMessageId = generateSafeId()
+        
+        if (result.verified) {
+          // Check if this is coming from scheduling flow
+          const flowContext = (result as any).flow_context
+          const cameFromScheduling = flowContext === 'from_scheduling_verification'
+          
+          console.log(`[UI] 🎯 Verification success - Flow context: ${flowContext}, Came from scheduling: ${cameFromScheduling}`)
+          
+          if (cameFromScheduling) {
+            // MANUAL BOOKING CONFIRMATION FLOW for 100% success rate
+            console.log(`[UI] 🎯 MANUAL BOOKING CONFIRMATION: Processing scheduling verification success`)
+            
+            // Extract all the scheduling data from result
+            const customerName = (result as any).customer_name || ""
+            const propertyName = (result as any).property_name || ""
+            const selectedDate = (result as any).selectedDate || ""
+            const selectedTime = (result as any).selectedTime || ""
+            
+            console.log(`[UI] 🎯 Booking data:`, { customerName, propertyName, selectedDate, selectedTime })
+            
+            // Step 1: Show success message with booking confirmation
+            const confirmationMessage = `Great ${customerName}! Your visit to ${propertyName} has been scheduled on ${selectedDate}.`
+            addTranscriptMessage(assistantMessageId, "assistant", confirmationMessage)
+            
+            // Step 2: Set booking details and show booking confirmation UI
+            const bookingDetails = {
+              customerName: customerName,
+              propertyName: propertyName,
+              date: selectedDate.split(' at ')[0].trim(), // Clean date
+              time: selectedTime,
+              phoneNumber: (result as any).phone_number
+            }
+            
+            console.log(`[UI] 🎯 Setting booking details:`, bookingDetails)
+            setBookingDetails(bookingDetails)
+            setShowOtpScreen(false)
+            setActiveDisplayMode('BOOKING_CONFIRMATION')
+            
+                        // Step 3: Update realEstate agent metadata with scheduling data, then call completeScheduling
+            setTimeout(async () => {
+              try {
+                const realEstateAgent = selectedAgentConfigSet?.find(a => a.name === "realEstate")
+                if (realEstateAgent) {
+                  // Update realEstate agent metadata with all the scheduling data
+                  if (!realEstateAgent.metadata) realEstateAgent.metadata = {}
+                  const metadata = realEstateAgent.metadata as any
+                  
+                  // Copy all the scheduling data from verification result
+                  metadata.customer_name = customerName
+                  metadata.property_name = propertyName
+                  metadata.selectedDate = selectedDate
+                  metadata.selectedTime = selectedTime
+                  metadata.phone_number = (result as any).phone_number
+                  metadata.is_verified = true
+                  metadata.has_scheduled = true
+                  metadata.active_project = propertyName
+                  metadata.property_id_to_schedule = (result as any).property_id_to_schedule
+                  
+                  console.log(`[UI] 🎯 Updated realEstate agent metadata:`, metadata)
+                  
+                                     // Now call completeScheduling with updated metadata
+                   if (realEstateAgent.toolLogic?.completeScheduling) {
+                     console.log(`[UI] 🎯 Calling completeScheduling tool in background`)
+                     const schedulingResult = await realEstateAgent.toolLogic.completeScheduling({}, [])
+                     console.log(`[UI] 🎯 CompleteScheduling result:`, schedulingResult)
+                     
+                     // Send trigger message to make agent say the confirmation message
+                     if (schedulingResult?.success && schedulingResult?.message) {
+                       console.log(`[UI] 🎯 Sending trigger message to agent:`, schedulingResult.message)
+                       setTimeout(() => {
+                         if (sessionStatus === "CONNECTED" && dcRef.current) {
+                           const triggerMessage = `{Trigger msg: Say "${schedulingResult.message}"}`
+                           console.log(`[UI] 🎯 Sending trigger: "${triggerMessage}"`)
+                           
+                           const triggerMessageId = generateSafeId()
+                           sendClientEvent({
+                             type: "conversation.item.create",
+                             item: {
+                               id: triggerMessageId,
+                               type: "message",
+                               role: "user",
+                               content: [{ type: "input_text", text: triggerMessage }],
+                             },
+                           }, "(booking confirmation trigger)")
+                           
+                           sendClientEvent({ type: "response.create" }, "(trigger response for booking confirmation)")
+                         }
+                       }, 1000) // Wait 1 second to ensure UI is ready
+                     }
+                   }
+                }
+              } catch (error) {
+                console.error("[UI] Error calling completeScheduling:", error)
+              }
+            }, 500)
+            
+          } else {
+            // Regular verification success flow
+            addTranscriptMessage(assistantMessageId, "assistant", "Perfect! You're now verified! 🎉")
+            setShowOtpScreen(false)
+            setActiveDisplayMode('VERIFICATION_SUCCESS')
+            
+            // Handle transfer if needed
+            if (result.destination_agent) {
+              console.log(`[UI] Transferring to: ${result.destination_agent}`)
+              // After a brief success display, go to chat mode
+              setTimeout(() => {
+                setActiveDisplayMode('CHAT')
+              }, 2000)
+            }
+          }
+        } else {
+          // Error - show error message
+          addTranscriptMessage(assistantMessageId, "assistant", result.message || "The code doesn't seem to match. Please double-check and try again.")
+          // Stay on OTP form for retry
+        }
+        
+      } catch (error) {
+        console.error("[UI] Error calling verifyOTP:", error)
+        const errorMessageId = generateSafeId()
+        addTranscriptMessage(errorMessageId, "assistant", "An unexpected error occurred during verification. Please try again.")
+      }
     },
-    [sendClientEvent, addTranscriptMessage, setShowOtpScreen]
+    [addTranscriptMessage, setShowOtpScreen, setActiveDisplayMode, setBookingDetails, selectedAgentConfigSet, sessionStatus, dcRef, sendClientEvent]
   )
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

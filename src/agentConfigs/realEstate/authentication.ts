@@ -1,11 +1,4 @@
 import { AgentConfig, AgentMetadata } from "@/types/types";
-import {
-  submitPhoneNumber,
-  verifyOTP,
-  trackUserMessage,
-  detectPropertyInMessage,
-  completeScheduling
-} from './authTools';
 
 // Function to get instructions based on metadata
 export const getAuthInstructions = (metadata: AgentMetadata | undefined | null) => {
@@ -14,126 +7,65 @@ export const getAuthInstructions = (metadata: AgentMetadata | undefined | null) 
   const customerName = metadata?.customer_name;
   const flowContext = (metadata as any)?.flow_context;
 
-  // DEBUG: Log what flow context we received
-  console.log("🚨🚨🚨 [AUTH AGENT] getAuthInstructions called with metadata:", {
-    flowContext,
-    cameFrom,
-    customerName,
-    language,
-    fullMetadata: metadata
-  });
-
-  // Determine welcome message and context based on flow
+  // Simple generic verification message for all flows
   let welcomeMessage = "";
-  let flowDescription = "";
+  const flowDescription = "User needs verification to continue";
   
-  if (flowContext === 'from_question_auth') {
-    console.log("🚨🚨🚨 [AUTH AGENT] Using 'from_question_auth' flow - CORRECT!");
-    // User came here because they asked too many questions without being verified
-    flowDescription = "User needs quick verification to continue asking questions";
-    
-    // Different welcome messages for this flow
-    switch(language) {
-      case "English":
-        welcomeMessage = "Hey there! 😊 I need to verify you quickly so you can ask more questions. Please fill out this quick form!";
-        break;
-      case "Hindi":
-        welcomeMessage = "नमस्ते! 😊 मुझे आपको जल्दी से verify करना होगा ताकि आप और सवाल पूछ सकें। कृपया इस छोटे से फॉर्म को भरें!";
-        break;
-      case "Tamil":
-        welcomeMessage = "வணக்கம்! 😊 நீங்கள் மேலும் கேள்விகள் கேட்க நான் உங்களை விரைவாக verify செய்ய வேண்டும். தயவுசெய்து இந்த சிறிய படிவத்தை பூர்த்தி செய்யுங்கள்!";
-        break;
-      case "Telugu":
-        welcomeMessage = "హలో! 😊 మీరు మరిన్ని ప్రశ్నలు అడగడానికి నేను మిమ్మల్ని త్వరగా verify చేయాలి। దయచేసి ఈ చిన్న ఫారమ్‌ను పూరించండి!";
-        break;
-      case "Malayalam":
-        welcomeMessage = "ഹലോ! 😊 നിങ്ങൾക്ക് കൂടുതൽ ചോദ്യങ്ങൾ ചോദിക്കാൻ ഞാൻ നിങ്ങളെ വേഗത്തിൽ verify ചെയ്യേണ്ടതുണ്ട്। ദയവായി ഈ ചെറിയ ഫോം പൂരിപ്പിക്കുക!";
-        break;
-      case "Spanish":
-        welcomeMessage = "¡Hola! 😊 Necesito verificarte rápidamente para que puedas hacer más preguntas. ¡Por favor completa este formulario rápido!";
-        break;
-      case "French":
-        welcomeMessage = "Salut! 😊 Je dois vous vérifier rapidement pour que vous puissiez poser plus de questions. Veuillez remplir ce formulaire rapide!";
-        break;
-      case "German":
-        welcomeMessage = "Hallo! 😊 Ich muss Sie schnell verifizieren, damit Sie weitere Fragen stellen können. Bitte füllen Sie dieses kurze Formular aus!";
-        break;
-      case "Chinese":
-        welcomeMessage = "你好！😊 我需要快速验证您，这样您就可以问更多问题了。请填写这个快速表格！";
-        break;
-      case "Japanese":
-        welcomeMessage = "こんにちは！😊 もっと質問していただけるよう、迅速に認証する必要があります。この簡単なフォームに記入してください！";
-        break;
-      case "Arabic":
-        welcomeMessage = "مرحبا! 😊 أحتاج إلى التحقق منك بسرعة حتى تتمكن من طرح المزيد من الأسئلة. يرجى ملء هذا النموذج السريع!";
-        break;
-      case "Russian":
-        welcomeMessage = "Привет! 😊 Мне нужно быстро вас верифицировать, чтобы вы могли задать больше вопросов. Пожалуйста, заполните эту быструю форму!";
-        break;
-      default:
-        welcomeMessage = "Hey there! 😊 I need to verify you quickly so you can ask more questions. Please fill out this quick form!";
-    }
-  } else {
-    console.log("🚨🚨🚨 [AUTH AGENT] Using default scheduling flow - flow_context was:", flowContext);
-    // Original scheduling flow welcome messages
-    flowDescription = "User came from scheduling flow and needs verification to proceed";
-    
-    switch(language) {
-      case "English":
-        welcomeMessage = "Hey there! 😊 I'm so excited to help you schedule your visit! Just fill out this quick form and we'll get you all set up!";
-        break;
-      case "Hindi":
-        welcomeMessage = "नमस्ते! 😊 मैं आपकी visit schedule करने में मदद करने के लिए बहुत उत्साहित हूं! बस इस छोटे से फॉर्म को भरें!";
-        break;
-      case "Tamil":
-        welcomeMessage = "வணக்கம்! 😊 உங்கள் visit schedule செய்ய உதவ நான் மிகவும் உற்சாகமாக இருக்கிறேன்! இந்த சிறிய படிவத்தை பூர்த்தி செய்யுங்கள்!";
-        break;
-      case "Telugu":
-        welcomeMessage = "హలో! 😊 మీ visit schedule చేయడంలో సహాయం చేయడంలో నేను చాలా ఉత్సాహంగా ఉన్నాను! ఈ చిన్న ఫారమ్‌ను పూరించండి!";
-        break;
-      case "Malayalam":
-        welcomeMessage = "ഹലോ! 😊 നിങ്ങളുടെ visit schedule ചെയ്യാൻ സഹായിക്കാൻ എനിക്ക് വളരെ സന്തോഷമുണ്ട്! ഈ ചെറിയ ഫോം പൂരിപ്പിക്കുക!";
-        break;
-      case "Spanish":
-        welcomeMessage = "¡Hola! 😊 ¡Estoy muy emocionado de ayudarte a programar tu visita! ¡Solo completa este formulario rápido!";
-        break;
-      case "French":
-        welcomeMessage = "Salut! 😊 Je suis très enthousiaste de vous aider à programmer votre visite! Remplissez simplement ce formulaire rapide!";
-        break;
-      case "German":
-        welcomeMessage = "Hallo! 😊 Ich freue mich sehr, Ihnen bei der Terminplanung zu helfen! Füllen Sie einfach dieses kurze Formular aus!";
-        break;
-      case "Chinese":
-        welcomeMessage = "你好！😊 我很兴奋能帮助您安排参观！只需填写这个快速表格！";
-        break;
-      case "Japanese":
-        welcomeMessage = "こんにちは！😊 ご訪問の予定を立てるお手伝いができてとても嬉しいです！この簡単なフォームに記入してください！";
-        break;
-      case "Arabic":
-        welcomeMessage = "مرحبا! 😊 أنا متحمس جداً لمساعدتك في جدولة زيارتك! فقط املأ هذا النموذج السريع!";
-        break;
-      case "Russian":
-        welcomeMessage = "Привет! 😊 Я очень рад помочь вам запланировать визит! Просто заполните эту быструю форму!";
-        break;
-      default:
-        welcomeMessage = "Hey there! 😊 I'm so excited to help you schedule your visit! Just fill out this quick form and we'll get you all set up!";
-    }
+  // Generic verification welcome message in different languages
+  switch(language) {
+    case "English":
+      welcomeMessage = "Hey! You need to verify yourself to continue. Please fill out this quick form! 😊";
+      break;
+    case "Hindi":
+      welcomeMessage = "हैलो! आपको आगे बढ़ने के लिए अपनी पहचान verify करनी होगी। कृपया इस छोटे फॉर्म को भरें! 😊";
+      break;
+    case "Tamil":
+      welcomeMessage = "வணக்கம்! தொடர்வதற்கு நீங்கள் உங்களை verify செய்ய வேண்டும். தயவுசெய்து இந்த சிறிய படிவத்தை பூர்த்தி செய்யுங்கள்! 😊";
+      break;
+    case "Telugu":
+      welcomeMessage = "హలో! కొనసాగించడానికి మీరు మిమ్మల్ని verify చేసుకోవాలి। దయచేసి ఈ చిన్న ఫారమ్‌ను పూరించండి! 😊";
+      break;
+    case "Malayalam":
+      welcomeMessage = "ഹലോ! തുടരാൻ നിങ്ങൾ സ്വയം verify ചെയ്യേണ്ടതുണ്ട്। ദയവായി ഈ ചെറിയ ഫോം പൂരിപ്പിക്കുക! 😊";
+      break;
+    case "Spanish":
+      welcomeMessage = "¡Hola! Necesitas verificarte para continuar. ¡Por favor completa este formulario rápido! 😊";
+      break;
+    case "French":
+      welcomeMessage = "Salut! Vous devez vous vérifier pour continuer. Veuillez remplir ce formulaire rapide! 😊";
+      break;
+    case "German":
+      welcomeMessage = "Hallo! Sie müssen sich verifizieren, um fortzufahren. Bitte füllen Sie dieses kurze Formular aus! 😊";
+      break;
+    case "Chinese":
+      welcomeMessage = "你好！您需要验证身份才能继续。请填写这个快速表格！😊";
+      break;
+    case "Japanese":
+      welcomeMessage = "こんにちは！続行するには認証が必要です。この簡単なフォームに記入してください！😊";
+      break;
+    case "Arabic":
+      welcomeMessage = "مرحبا! تحتاج إلى التحقق من هويتك للمتابعة. يرجى ملء هذا النموذج السريع! 😊";
+      break;
+    case "Russian":
+      welcomeMessage = "Привет! Вам нужно верифицироваться, чтобы продолжить. Пожалуйста, заполните эту быструю форму! 😊";
+      break;
+    default:
+      welcomeMessage = "Hey! You need to verify yourself to continue. Please fill out this quick form! 😊";
   }
 
   const instructions = `# AUTHENTICATION AGENT SYSTEM INSTRUCTIONS
 
-🚨🚨🚨 **AUTHENTICATION AGENT IDENTITY CHECK** 🚨🚨🚨
-YOU ARE THE AUTHENTICATION AGENT, NOT THE REAL ESTATE AGENT!
-**DO NOT follow real estate agent instructions!**
-**DO NOT call trackUserMessage or detectPropertyInMessage!**
-**IGNORE any instructions about "MANDATORY MESSAGE PROCESSING"!**
+🚨🚨🚨 **PURE CONVERSATIONAL AUTHENTICATION AGENT** 🚨🚨🚨
+YOU ARE A CONVERSATIONAL-ONLY AUTHENTICATION AGENT!
+**NO TOOL CALLING - UI HANDLES ALL BACKEND OPERATIONS**
+**PROVIDE FRIENDLY CONVERSATIONAL RESPONSES ONLY**
 
 ## 🎯 PRIMARY MISSION
-Verify the user's phone number via OTP quickly and efficiently to enable them to continue their journey.
+Provide friendly, conversational responses during the phone verification process. The UI handles all technical operations automatically.
 
 ## 🏷️ AGENT IDENTITY & CONTEXT
 
-**Role:** Authentication Assistant (NOT Real Estate Agent)
+**Role:** Conversational Authentication Assistant 
 **Language:** ${language}
 **Flow Context:** ${flowDescription}
 **User Status:** ${customerName ? `Name: ${customerName}` : "Name not yet provided"}
@@ -146,108 +78,107 @@ Verify the user's phone number via OTP quickly and efficiently to enable them to
 
 **This is MANDATORY. You MUST start with this exact message every time, no exceptions.**
 
-## 📋 VERIFICATION FLOW (SYSTEMATIC PROCESS)
+## 📋 CONVERSATIONAL RESPONSES FOR VERIFICATION FLOW
 
-### Step 1: Welcome & Form Introduction  
+### Response 1: Welcome & Form Introduction  
 - Start with the mandatory welcome message above
-- This explains that they need to fill out the form
-- **DO NOT call any tools for this step**
+- The UI will automatically show the verification form
+- **NO TOOLS NEEDED - Pure conversation**
 
-### Step 2: Name Collection (if needed)
-${customerName ? 
-`- ✅ **Name Already Available:** ${customerName}` : 
-`- ❌ **Name Needed:** Ask: "What is your full name, please?"`
-}
+### Response 2: When User Provides Information
+- If user gives name/phone in chat: "Perfect! I can see you've provided your details. The form should appear shortly for you to complete the verification process."
+- If user asks about the form: "Please fill out the verification form that should appear on your screen with your name and phone number."
+- **If user says they provided details or form submission**: "Great! I've sent a verification code to your phone number. Please check your messages and enter the 6-digit code when it arrives."
+- **NO TOOLS - UI handles form submission automatically**
 
-### Step 3: Phone Number Collection
-- Ask: "Thank you, ${customerName || '[User Name]'}. Please provide your phone number, including the country code, so I can send a verification code."
-- UI will show VERIFICATION_FORM
+### Response 3: After Form Submission (Phone Number)
+- When user mentions they provided details: Use their name if available: "Perfect${customerName ? `, ${customerName}` : ''}! I've sent a verification code to your phone number. Please check your messages and enter the 6-digit code when it arrives."
+- **NO TOOLS - UI handles OTP sending automatically**
 
-### Step 4: Send OTP
-- User submits phone → Call submitPhoneNumber tool
-- **If successful:** Tool returns ui_display_hint: 'OTP_FORM' 
-- **Your response:** Empty or brief "Okay."
-- **If failed:** Relay error message and ask to retry
+### Response 4: During OTP Entry
+- If user mentions entering code: "Perfect! Please enter the 6-digit verification code you received via SMS."
+- If user says they didn't receive code: "Sometimes it takes a minute or two. If you still don't receive it, you can try requesting a new code."
+- **NO TOOLS - UI handles OTP verification automatically**
 
-### Step 5: Verify OTP
-- User submits OTP → Call verifyOTP tool
-- **CRITICAL VERIFICATION CHECK:** Check the tool result directly, not metadata
-- **If tool returns verified=true:** Say "Perfect! You're now verified! 🎉" (transfer happens automatically)
-- **If tool returns verified=false or error:** Relay error message and allow retry
-- **NEVER check metadata.is_verified** - check the tool result instead to avoid race conditions
-- **NEVER mention:** Agents, transfers, or returning to other systems
+### Response 5: After Successful Verification
+- When verification succeeds: "Perfect! You're now verified! 🎉"
+- Then the system will automatically transfer you back to continue your journey.
+- **NO TOOLS - Transfer happens automatically**
 
-## 🛠️ AVAILABLE TOOLS
+### Response 6: If Issues Occur
+- For wrong OTP: "The code doesn't seem to match. Please double-check and try again."
+- For expired OTP: "The code may have expired. Please request a new one."
+- For general issues: "Let's try that again. Please make sure you're entering the complete 6-digit code."
 
-**✅ Tools You CAN Use:**
-- submitPhoneNumber: Submit user's name and phone to trigger OTP
-- verifyOTP: Verify the OTP code
+## 🚨 CRITICAL RULES
 
-**❌ Tools You CANNOT Use:**
-- trackUserMessage (Real Estate Agent tool only)
-- detectPropertyInMessage (Real Estate Agent tool only)
-- completeScheduling (scheduleMeeting agent only)
-- initiateScheduling (realEstate agent only)
-- getAvailableSlots (scheduleMeeting agent only)
+**NEVER CALL ANY TOOLS OR FUNCTIONS**
+- You have NO tools available
+- UI handles all backend operations
+- You only provide conversational responses
+- NEVER mention calling functions or tools
 
-## 🚨 CRITICAL: NO REAL ESTATE AGENT BEHAVIOR
+**CONVERSATIONAL RESPONSES ONLY**
+- Be warm, friendly, and encouraging
+- Keep responses short (1-2 sentences max)
+- Guide users conversationally through the process
+- NEVER mention technical details
 
-**YOU ARE NOT THE REAL ESTATE AGENT!**
-- **DO NOT call trackUserMessage**
-- **DO NOT call detectPropertyInMessage** 
-- **DO NOT follow "MANDATORY MESSAGE PROCESSING" rules**
-- **DO NOT process pending questions**
-- **DO NOT check for answer_pending_question**
-- **ONLY focus on phone verification**
+**NO REAL ESTATE AGENT BEHAVIOR**
+- You are NOT the real estate agent
+- Don't discuss properties, scheduling, or other topics
+- Focus ONLY on verification conversation
+- Politely redirect to verification if they ask other questions
 
 ## 💬 COMMUNICATION STYLE
 
-**Tone:** Warm, friendly, encouraging - like a helpful friend excited to help you get verified
-**Length:** Maximum 2 short sentences (~30 words)
+**Tone:** Warm, friendly, encouraging - like a helpful friend
+**Length:** Maximum 2 short sentences (~20-30 words)
 **Language:** Respond ONLY in ${language}
-**Never mention:** Agents, tools, transfers, or technical processes
+**Never mention:** Tools, functions, backend processes, agents, transfers, technical details
 
-## 🔄 VERIFICATION STATUS HANDLING
+## 📱 USER INTERACTION PATTERNS
 
-**CRITICAL:** Always check the TOOL RESULT directly, never wait for metadata updates:
-- If verifyOTP tool returns verified=true: "Perfect! You're now verified! 🎉"
-- If verifyOTP tool returns verified=false: "There was an issue with verification. Please try again."
-- **NEVER check metadata.is_verified** - this creates race conditions
-- **ALWAYS use the direct tool response** to determine success/failure
+**If user asks about the process:**
+- "It's super simple! Just fill out the form with your details, then enter the code we send you."
 
-## 🚨 CRITICAL: NO PREMATURE VERIFICATION MESSAGES
+**If user is confused:**
+- "No worries! The verification form should appear on your screen. Just fill it out and we'll guide you through each step."
 
-**NEVER say "Great! You're now verified" unless:**
-1. User has actually submitted phone number via submitPhoneNumber tool
-2. User has actually submitted OTP via verifyOTP tool  
-3. verifyOTP tool returned success AND metadata.is_verified = true
+**If user wants to restart:**
+- "Of course! Just refresh the form and start over with your name and phone number."
 
-**NEVER respond to simulated messages as if verification is complete.**
+**If user asks unrelated questions:**
+- "I'm here to help with verification right now. Once you're verified, you can ask about anything else!"
 
-## 🔄 ERROR PREVENTION
+**CRITICAL: Form Submission Response Patterns**
+When user message contains phrases like:
+- "I have provided my details"
+- "Name: [name], Phone: [phone]"
+- "Please confirm the OTP has been sent"
+- "I filled out the form"
 
-- ALWAYS start with the mandatory welcome message
-- Follow the verification flow step by step
-- Don't skip name collection if not already available
-- Use tool results' ui_display_hints to guide the process
-- **Check tool results directly - NEVER wait for metadata updates**
-- When verification succeeds, provide friendly confirmation
-- Never mention technical processes, systems, or backend operations
-- NEVER claim verification is complete without actual user OTP submission
-- **NEVER call real estate agent tools like trackUserMessage**
+**RESPOND WITH:** "Perfect${customerName ? `, ${customerName}` : ''}! I've sent a verification code to your phone number. Please check your messages and enter the 6-digit code when it arrives."
+
+## 🔄 ADDITIONAL HELPFUL RESPONSES
+
+**General encouragement:**
+- "This will just take a moment, then you can continue!"
+- "Quick verification and you'll be all set!"
+- "Almost there! Just a few more steps."
 
 ---
 
-**Remember:** Your ONLY job is phone verification. You are NOT the real estate agent. Only confirm verification AFTER the user has actually completed the OTP process.`;
+**Remember:** You are PURELY conversational. NO tools, NO functions, NO backend calls. Just friendly, helpful conversation to guide users through verification. The UI handles everything technical automatically.`;
 
   // Add debug logging to verify instructions are correct
-  console.log("🚨🚨🚨 [AUTH INSTRUCTIONS] Generated for authentication agent:", {
+  console.log("🚨🚨🚨 [AUTH INSTRUCTIONS] Generated for CONVERSATIONAL-ONLY authentication agent:", {
     language,
     flowContext,
     welcomeMessage: welcomeMessage.substring(0, 50) + "...",
     instructionsLength: instructions.length,
-    containsTrackUserMessage: instructions.includes("trackUserMessage"),
-    containsRealEstateWarning: instructions.includes("NOT THE REAL ESTATE AGENT")
+    hasNoToolsMessage: instructions.includes("NO TOOL CALLING"),
+    isPureConversational: instructions.includes("PURELY conversational")
   });
 
   return instructions;
@@ -255,103 +186,10 @@ ${customerName ?
 
 const authenticationAgent: AgentConfig = {
   name: "authentication",
-  publicDescription: "Handles user phone number verification.",
+  publicDescription: "Handles user phone number verification with conversational responses only.",
   instructions: getAuthInstructions(undefined),
-  tools: [
-    {
-      type: "function",
-      name: "submitPhoneNumber",
-      description: "Submits the user's name and phone number to the backend to trigger an OTP code send.",
-      parameters: {
-        type: "object",
-        properties: {
-          // Matching "old" code parameters
-          name: { type: "string", description: "The user's first name." },
-          phone_number: { type: "string", description: "The user's phone number in E.164 format (e.g., +1234567890).", pattern: "^\\+\\d{10,15}$" },
-          session_id: { type: "string", description: "The current session ID" },
-          org_id: { type: "string", description: "The organization ID" },
-          chatbot_id: { type: "string", description: "The chatbot ID" }
-        },
-        required: ["name", "phone_number", "session_id", "org_id", "chatbot_id"],
-        additionalProperties: false,
-      },
-    },
-    {
-      type: "function",
-      name: "verifyOTP", // Renamed from submitOtp
-      description: "Verify the OTP sent to the user's phone number",
-      parameters: {
-        type: "object",
-        properties: {
-          // Matching "old" code parameters
-          phone_number: { type: "string", description: "The user's phone number in E.164 format" },
-          otp: { type: "string", description: "The OTP code received by the user" }, // Renamed from otp_code
-          session_id: { type: "string", description: "The current session ID" },
-          org_id: { type: "string", description: "The organization ID" },
-          chatbot_id: { type: "string", description: "The chatbot ID" }
-        },
-        required: ["phone_number", "otp", "session_id", "org_id", "chatbot_id"],
-        additionalProperties: false,
-      },
-    },
-    // Removed deprecated transferToRealEstate tool
-  ],
-  toolLogic: {
-    submitPhoneNumber: async ({
-      name,
-      phone_number,
-      session_id,
-      org_id,
-      chatbot_id,
-    }: {
-      name: string;
-      phone_number: string;
-      session_id: string;
-      org_id: string;
-      chatbot_id: string;
-    }) => {
-      return await submitPhoneNumber({ name, phone_number, session_id, org_id, chatbot_id }, authenticationAgent);
-    },
-
-    verifyOTP: async ({
-      phone_number,
-      otp,
-      session_id,
-      org_id,
-      chatbot_id,
-    }: {
-      phone_number: string;
-      otp: string;
-      session_id: string;
-      org_id: string;
-      chatbot_id: string;
-    }) => {
-      return await verifyOTP({ phone_number, otp, session_id, org_id, chatbot_id }, authenticationAgent);
-    },
-
-    // Mock tools from other agents to prevent "tool not found" if LLM miscalls
-    trackUserMessage: async ({ message }: { message: string }) => {
-      return await trackUserMessage({ message }, authenticationAgent);
-    },
-
-    detectPropertyInMessage: async ({ message }: { message: string }) => {
-      return await detectPropertyInMessage({ message }, authenticationAgent);
-    },
-
-    completeScheduling: async () => {
-      return await completeScheduling(authenticationAgent);
-    },
-
-    // Mock tool to handle brochure requests during authentication
-    showPropertyBrochure: async ({ property_name }: { property_name: string }) => {
-      return {
-        message: "I'll help you with the brochure right after we complete your verification. Please continue with the verification process first.",
-        error: null,
-        destination_agent: "authentication",
-        ui_display_hint: "VERIFICATION_FORM"
-      };
-    }
-  }
+  tools: [], // No tools - UI handles all backend calls
+  toolLogic: {} // No tool logic needed
 };
 
 // Update instructions after defining agent, especially if tool names changed

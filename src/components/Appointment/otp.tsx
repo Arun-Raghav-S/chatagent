@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react"
 import { motion } from "framer-motion"
+import { ArrowLeft } from "lucide-react"
 
 // OPTIMIZED ANIMATION CONFIGURATIONS
 const FAST_TRANSITION = { duration: 0.1, ease: "easeOut" };
@@ -9,9 +10,10 @@ const FAST_TRANSITION = { duration: 0.1, ease: "easeOut" };
 interface OTPInputProps {
   onSubmit: (otp: string) => void
   onCancel?: () => void
+  onBack?: () => void // Go back to verification form
 }
 
-export default function OTPInput({ onSubmit, onCancel }: OTPInputProps) {
+export default function OTPInput({ onSubmit, onCancel, onBack }: OTPInputProps) {
   const [otp, setOtp] = useState(["", "", "", "", "", ""])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isComplete, setIsComplete] = useState(false)
@@ -150,12 +152,25 @@ export default function OTPInput({ onSubmit, onCancel }: OTPInputProps) {
 
   return (
     <motion.div
-      className="p-8 bg-[#0b3d91] text-white rounded-2xl w-full max-w-md mx-auto shadow-2xl"
+      className="p-8 bg-[#0b3d91] text-white rounded-2xl w-full max-w-md mx-auto shadow-2xl relative"
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 15 }}
       transition={FAST_TRANSITION}
     >
+      {/* Back button */}
+      {onBack && (
+        <motion.button
+          onClick={onBack}
+          className="absolute top-4 left-4 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full p-2 transition-all duration-100 active:scale-95"
+          whileTap={{ scale: 0.9 }}
+          whileHover={{ scale: 1.05 }}
+          title="Go back"
+        >
+          <ArrowLeft size={18} className="text-white" />
+        </motion.button>
+      )}
+
       <motion.h3 
         className="text-2xl font-bold mb-3 text-center"
         initial={{ opacity: 0, y: 10 }}

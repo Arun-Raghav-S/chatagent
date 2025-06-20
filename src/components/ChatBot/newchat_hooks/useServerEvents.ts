@@ -823,5 +823,6 @@ export function useServerEvents(
     handleServerEvent: localHandleServerEventRef.current,
     canCreateResponse,
     bookingDetails,
+    setBookingDetails,
   }
 } 

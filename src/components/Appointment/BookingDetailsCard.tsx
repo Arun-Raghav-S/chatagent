@@ -9,6 +9,7 @@ interface BookingDetailsCardProps {
   date: string;
   time: string;
   phoneNumber?: string;
+  onClose?: () => void;
 }
 
 const BookingDetailsCard: React.FC<BookingDetailsCardProps> = ({
@@ -16,13 +17,27 @@ const BookingDetailsCard: React.FC<BookingDetailsCardProps> = ({
   propertyName,
   date,
   time,
-  phoneNumber
+  phoneNumber,
+  onClose
 }) => {
   return (
-    <div className="bg-white text-blue-900 rounded-xl shadow-lg p-5 w-full">
-      <div className="flex items-center justify-center mb-4 bg-blue-50 rounded-lg p-3">
-        <CalendarClock size={32} className="text-blue-700" />
-        <h2 className="text-xl font-bold ml-2">Booking Confirmed</h2>
+    <div className="bg-white text-blue-900 rounded-xl shadow-lg p-5 w-full relative">
+      <div className="flex items-center justify-between mb-4 bg-blue-50 rounded-lg p-3 relative">
+        <div className="flex items-center justify-center flex-1">
+          <CalendarClock size={32} className="text-blue-700" />
+          <h2 className="text-xl font-bold ml-2">Booking Confirmed</h2>
+        </div>
+        
+        {/* Close button - styled to match the card */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="w-7 h-7 bg-blue-100 hover:bg-blue-200 text-blue-700 hover:text-blue-800 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-200 opacity-70 hover:opacity-100 ml-2"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        )}
       </div>
       
       <div className="space-y-3">

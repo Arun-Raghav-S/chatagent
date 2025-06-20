@@ -263,6 +263,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
     setBrochureData,
     handlePropertySelect,
     handleClosePropertyDetails,
+    handleBackFromPropertyDetails,
     handleGetAllProperties,
     handleCloseGallery,
     handleCloseLocationMap,
@@ -279,7 +280,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
     selectedAgentName
   )
 
-  const { handleServerEvent, canCreateResponse, bookingDetails } =
+  const { handleServerEvent, canCreateResponse, bookingDetails, setBookingDetails } =
     useServerEvents(
       setSessionStatus,
       selectedAgentName,
@@ -346,6 +347,8 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
     setVerificationData,
     setIsVerifying,
     setShowOtpScreen,
+    setActiveDisplayMode,
+    setBookingDetails,
     micMuted,
     setMicMuted,
     audioContext,
@@ -807,6 +810,40 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
     setIsConfirmed(false)
   }
 
+  // Scheduling navigation handlers
+  const handleSchedulingBack = () => {
+    console.log("[UI] Back from scheduling form")
+    // Go back to previous screen - could be property details or chat
+    if (selectedPropertyDetails) {
+      // Switch back to real estate agent and show property details
+      setSelectedAgentName("realEstate")
+      setActiveDisplayMode("PROPERTY_DETAILS")
+    } else {
+      // No property details, go back to chat
+      setSelectedAgentName("realEstate")
+      setActiveDisplayMode("CHAT")
+    }
+  }
+
+  const handleSchedulingClose = () => {
+    console.log("[UI] Close scheduling form")
+    // Always go back to real estate agent and chat
+    setSelectedAgentName("realEstate")
+    setActiveDisplayMode("CHAT")
+  }
+
+  // Authentication navigation handlers
+  const handleOtpBack = () => {
+    console.log("[UI] Back from OTP to verification form")
+    setActiveDisplayMode("VERIFICATION_FORM")
+  }
+
+  const handleBookingConfirmationClose = () => {
+    console.log("[UI] Closing booking confirmation")
+    setActiveDisplayMode("CHAT")
+    setBookingDetails(null)
+  }
+
   return (
     <div
       className="relative bg-blue-900 rounded-3xl overflow-hidden text-white flex flex-col"
@@ -849,9 +886,9 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
           </div>
           <span className="font-medium">Real Estate AI Agent</span>
         </div>
-        <button className="ml-auto p-2 hover:bg-blue-800 rounded-full transition-colors duration-100">
+        {/* <button className="ml-auto p-2 hover:bg-blue-800 rounded-full transition-colors duration-100">
           <X size={20} />
-        </button>
+        </button> */}
       </motion.div>
       {showIntro ? (
         <AnimatePresence mode="wait">
@@ -989,7 +1026,21 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
                   initial="hidden"
                   animate="visible"
                   exit="exit"
+                  className="space-y-2"
                 >
+                  {/* Header with close button */}
+                  <div className="flex items-center justify-between px-2">
+                    <h3 className="text-white font-medium text-lg">Available Properties</h3>
+                    <motion.button
+                      onClick={() => setActiveDisplayMode('CHAT')}
+                      className="bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full p-1 transition-all duration-100 active:scale-95"
+                      whileTap={{ scale: 0.9 }}
+                      whileHover={{ scale: 1.05 }}
+                      title="Close"
+                    >
+                      <X size={18} className="text-white" />
+                    </motion.button>
+                  </div>
                   <PropertyList 
                     properties={propertyListData}
                     onScheduleVisit={() => {}} 
@@ -1014,6 +1065,8 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
                         handleTimeSlotSelection(selectedDate, selectedTime)
                       }
                     }}
+                    onBack={handleSchedulingBack}
+                    onClose={handleSchedulingClose}
                   />
                 </motion.div>
               )}
@@ -1038,7 +1091,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
                   animate="visible"
                   exit="exit"
                 >
-                  <OTPInput onSubmit={handleOtpSubmit} />
+                  <OTPInput onSubmit={handleOtpSubmit} onBack={handleOtpBack} />
                 </motion.div>
               )}
               {activeDisplayMode === 'VERIFICATION_SUCCESS' && (
@@ -1253,6 +1306,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
                     date={bookingDetails.date}
                     time={bookingDetails.time}
                     phoneNumber={bookingDetails.phoneNumber}
+                    onClose={handleBookingConfirmationClose}
                   />
                 </motion.div>
               )}
@@ -1297,6 +1351,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
                   <PropertyDetails 
                     {...selectedPropertyDetails}
                     onClose={handleClosePropertyDetails}
+                    onBack={handleBackFromPropertyDetails}
                     onScheduleVisit={handleScheduleVisitRequest}
                   />
                 </motion.div>

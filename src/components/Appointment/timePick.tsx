@@ -1,7 +1,8 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { ChevronLeft, ChevronRight, Calendar, Clock } from "lucide-react"
+import { ChevronLeft, ChevronRight, Calendar, Clock, ArrowLeft, X } from "lucide-react"
+import { motion } from "framer-motion"
 
 interface PropertyProps {
   id: string
@@ -16,6 +17,8 @@ interface TimePickProps {
   schedule: Record<string, string[]>
   property: PropertyProps
   onTimeSelect: (selectedDate: string, selectedTime?: string) => void
+  onBack?: () => void // Go back to previous screen (property details or chat)
+  onClose?: () => void // Close and return to chat
 }
 
 interface CalendarDay {
@@ -28,7 +31,7 @@ interface CalendarDay {
   timeSlots: string[]
 }
 
-const TimePick: React.FC<TimePickProps> = ({ schedule, property, onTimeSelect }) => {
+const TimePick: React.FC<TimePickProps> = ({ schedule, property, onTimeSelect, onBack, onClose }) => {
   console.log("[TimePick] Component rendered with schedule:", schedule)
   console.log("[TimePick] Schedule keys:", Object.keys(schedule))
   
@@ -130,12 +133,45 @@ const TimePick: React.FC<TimePickProps> = ({ schedule, property, onTimeSelect })
   return (
     <div className="bg-white rounded-xl shadow-lg p-6 max-w-md mx-auto">
       {/* Header */}
-      <div className="text-center mb-6">
-        <div className="flex items-center justify-center mb-2">
-          <Calendar className="text-blue-600 mr-2" size={24} />
-          <h2 className="text-xl font-semibold text-gray-800">Schedule Visit</h2>
+      <div className="mb-6">
+        {/* Navigation buttons - only show on calendar screen */}
+        {!showTimeSelection && (onBack || onClose) && (
+          <div className="flex justify-end mb-3">
+            <div className="flex space-x-1">
+              {onBack && (
+                <motion.button
+                  onClick={onBack}
+                  className="bg-gray-100 hover:bg-gray-200 rounded-full p-1 transition-all duration-100 active:scale-95"
+                  whileTap={{ scale: 0.9 }}
+                  whileHover={{ scale: 1.05 }}
+                  title="Go back"
+                >
+                  <ArrowLeft size={18} className="text-gray-600" />
+                </motion.button>
+              )}
+              
+              {onClose && (
+                <motion.button
+                  onClick={onClose}
+                  className="bg-gray-100 hover:bg-gray-200 rounded-full p-1 transition-all duration-100 active:scale-95"
+                  whileTap={{ scale: 0.9 }}
+                  whileHover={{ scale: 1.05 }}
+                  title="Close"
+                >
+                  <X size={18} className="text-gray-600" />
+                </motion.button>
+              )}
+            </div>
+          </div>
+        )}
+        
+        <div className="text-center">
+          <div className="flex items-center justify-center mb-2">
+            <Calendar className="text-blue-600 mr-2" size={24} />
+            <h2 className="text-xl font-semibold text-gray-800">Schedule Visit</h2>
+          </div>
+          <p className="text-gray-600 text-sm">{property.name}</p>
         </div>
-        <p className="text-gray-600 text-sm">{property.name}</p>
       </div>
 
       {!showTimeSelection ? (

@@ -57,6 +57,18 @@ export function usePropertyData(
     setActiveDisplayMode("CHAT")
   }
 
+  const handleBackFromPropertyDetails = () => {
+    console.log("[UI] Going back from property details.")
+    // Go back to property list if we have properties, otherwise go to chat
+    if (propertyListData && propertyListData.length > 0) {
+      setSelectedPropertyDetails(null)
+      setActiveDisplayMode("PROPERTY_LIST")
+    } else {
+      setSelectedPropertyDetails(null)
+      setActiveDisplayMode("CHAT")
+    }
+  }
+
   const handleGetAllProperties = useCallback(async () => {
     console.log("[UI] Attempting to load all properties directly")
     if (propertyListData || isLoadingProperties) {
@@ -369,6 +381,7 @@ export function usePropertyData(
     setBrochureData,
     handlePropertySelect,
     handleClosePropertyDetails,
+    handleBackFromPropertyDetails,
     handleGetAllProperties,
     handleCloseGallery,
     handleCloseLocationMap,
