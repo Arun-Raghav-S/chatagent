@@ -1970,7 +1970,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) { /
   // });
 
   // Add handleTimeSlotSelection function to handle slot selection
-  const handleTimeSlotSelection = useCallback((date: string, time: string) => {
+  const handleTimeSlotSelection = useCallback((date: string, time?: string) => {
     console.log(`[UI] User selected time slot: date=${date}, time=${time || 'none'}`);
     
     // Store the selected date in state (always), and time only if provided

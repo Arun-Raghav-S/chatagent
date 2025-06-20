@@ -553,11 +553,11 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
                 } as ExtendedAgentMetadata));
               }, 500);
             } else if (shouldTriggerSchedulingAgent) {
-              console.log(`📅 [SCHEDULING TRIGGER] Triggering scheduleMeeting agent to call getAvailableSlots`);
+              console.log(`📅 [SCHEDULING TRIGGER] Scheduling agent activated - sending greeting trigger`);
               updateSession(false);
               setTimeout(() => {
-                // Send a trigger message to make the scheduling agent call getAvailableSlots
-                sendSimulatedUserMessage("Hello, I need help with booking a visit. Please show me available dates.");
+                // Send a trigger message to make the scheduling agent say the greeting
+                sendSimulatedUserMessage("Hello");
               }, 500);
             } else {
               updateSession(shouldSendSimulatedHi);
@@ -635,6 +635,80 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
         }
       }
       setShowTimeSlots(true)
+      
+      // 🔥 MANUAL CALL: Call getAvailableSlots directly instead of relying on agent
+      const manuallyCallGetAvailableSlots = async () => {
+        try {
+          console.log("📅 [MANUAL SLOTS] Calling getAvailableSlots manually when scheduling UI loads")
+          
+          // Import the function
+          const { getAvailableSlots } = await import("@/agentConfigs/realEstate/scheduleTools")
+          
+          // Get the scheduling agent
+          const schedulingAgent = selectedAgentConfigSet?.find(a => a.name === "scheduleMeeting")
+          if (!schedulingAgent) {
+            console.error("[MANUAL SLOTS] No scheduling agent found")
+            return
+          }
+          
+          // Set the metadata
+          schedulingAgent.metadata = agentMetadata || undefined
+          
+          // Call getAvailableSlots
+          const result = await getAvailableSlots({ property_id: "" }, schedulingAgent)
+          
+          console.log("📅 [MANUAL SLOTS] getAvailableSlots result:", result)
+          
+          // Set the slots in UI
+          if (result.slots) {
+            setAvailableSlots(result.slots)
+            console.log("📅 [MANUAL SLOTS] Set available slots:", Object.keys(result.slots).length, "dates")
+          }
+          
+          // Show the greeting message
+          if (result.message) {
+            setLastAgentTextMessage(result.message)
+            console.log("📅 [MANUAL SLOTS] Set greeting message:", result.message.substring(0, 50) + "...")
+          }
+          
+          // Ensure property is set
+          if (result.property_name && !selectedProperty) {
+            setSelectedProperty({
+              id: result.property_id || "default-property",
+              name: result.property_name,
+              price: "Contact for pricing", 
+              area: "Available on request",
+              description: `Schedule a visit to see ${result.property_name} in person.`,
+              mainImage: "/placeholder.svg",
+            })
+          }
+          
+        } catch (error) {
+          console.error("📅 [MANUAL SLOTS] Error calling getAvailableSlots:", error)
+          
+          // Fallback slots
+          const fallbackSlots: Record<string, string[]> = {}
+          const today = new Date()
+          for (let i = 1; i <= 5; i++) {
+            const date = new Date(today)
+            date.setDate(today.getDate() + i)
+            if (date.getDay() >= 1 && date.getDay() <= 5) { // Weekdays only
+              const dateStr = date.toLocaleDateString('en-US', { 
+                weekday: 'long', 
+                month: 'long', 
+                day: 'numeric',
+                year: 'numeric'
+              })
+              fallbackSlots[dateStr] = ["11:00 AM", "4:00 PM"]
+            }
+          }
+          setAvailableSlots(fallbackSlots)
+          console.log("📅 [MANUAL SLOTS] Set fallback slots")
+        }
+      }
+      
+      // Call it after a short delay to ensure UI is ready
+      setTimeout(manuallyCallGetAvailableSlots, 100)
     } else if (selectedAgentName === "realEstate") {
       console.log(
         `🏠 [AGENT SWITCH] Switched TO realEstate agent from: ${

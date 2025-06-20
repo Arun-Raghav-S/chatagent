@@ -723,24 +723,8 @@ export function useHandleServerEvent({
                       }, 100);
                     }, 100);
                   } else {
-                    // First send a simulated message to trigger the scheduling agent
-                    const simulatedMessageId = generateSafeId();
-                    console.log("[handleFunctionCall] Sending simulated message to scheduleMeeting agent: 'Hello, I need help with booking a visit. Please show me available dates.'");
-                    
-                    sendClientEvent({
-                      type: "conversation.item.create", 
-                      item: {
-                        id: simulatedMessageId,
-                        type: "message",
-                        role: "user",
-                        content: [{ type: "input_text", text: "Hello, I need help with booking a visit. Please show me available dates." }]
-                      }
-                    }, "(simulated message for scheduling)");
-                    
-                    // Then trigger a response to that message
-                    setTimeout(() => {
-                      sendClientEvent({ type: "response.create" }, "(auto-trigger response after scheduling transfer)");
-                    }, 100);
+                    // No need to send simulated message - slots are loaded manually in newchat.tsx
+                    console.log("[handleFunctionCall] Scheduling agent transfer complete - slots will be loaded manually");
                   }
                 }, 200); // Increased delay
               }

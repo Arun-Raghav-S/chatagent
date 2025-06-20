@@ -174,7 +174,7 @@ export function useChatHandlers({
   }
 
   const handleTimeSlotSelection = useCallback(
-    (date: string, time: string) => {
+    (date: string, time?: string) => {
       console.log(
         `[UI] User selected time slot: date=${date}, time=${time || "none"}`
       )

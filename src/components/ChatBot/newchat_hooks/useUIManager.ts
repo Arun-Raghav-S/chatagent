@@ -115,6 +115,57 @@ export function useUIManager(
 
       // Always enable time slots when switching to scheduling agent
       setShowTimeSlots(true)
+      
+      // 🔥 MANUAL CALL: Call getAvailableSlots directly instead of relying on agent
+      const manuallyCallGetAvailableSlots = async () => {
+        try {
+          console.log("📅 [MANUAL SLOTS] Calling getAvailableSlots manually from useUIManager")
+          
+          // Import the function
+          const { getAvailableSlots } = await import("@/agentConfigs/realEstate/scheduleTools")
+          
+          // Create a minimal agent object for the call
+          const tempAgent = {
+            metadata: agentMetadata || undefined
+          }
+          
+          // Call getAvailableSlots
+          const result = await getAvailableSlots({ property_id: "" }, tempAgent as any)
+          
+          console.log("📅 [MANUAL SLOTS] getAvailableSlots result from useUIManager:", result)
+          
+          // Set the slots in UI
+          if (result.slots) {
+            setAvailableSlots(result.slots)
+            console.log("📅 [MANUAL SLOTS] Set available slots from useUIManager:", Object.keys(result.slots).length, "dates")
+          }
+          
+        } catch (error) {
+          console.error("📅 [MANUAL SLOTS] Error calling getAvailableSlots from useUIManager:", error)
+          
+          // Fallback slots
+          const fallbackSlots: Record<string, string[]> = {}
+          const today = new Date()
+          for (let i = 1; i <= 5; i++) {
+            const date = new Date(today)
+            date.setDate(today.getDate() + i)
+            if (date.getDay() >= 1 && date.getDay() <= 5) { // Weekdays only
+              const dateStr = date.toLocaleDateString('en-US', { 
+                weekday: 'long', 
+                month: 'long', 
+                day: 'numeric',
+                year: 'numeric'
+              })
+              fallbackSlots[dateStr] = ["11:00 AM", "4:00 PM"]
+            }
+          }
+          setAvailableSlots(fallbackSlots)
+          console.log("📅 [MANUAL SLOTS] Set fallback slots from useUIManager")
+        }
+      }
+      
+      // Call it after a short delay to ensure UI is ready
+      setTimeout(manuallyCallGetAvailableSlots, 100)
     } else if (selectedAgentName === "realEstate") {
       console.log(
         `🏠 [AGENT SWITCH] Switched TO realEstate agent from: ${

@@ -115,6 +115,9 @@ const TimePick: React.FC<TimePickProps> = ({ schedule, property, onTimeSelect })
     setSelectedDate(day.dateString)
     setSelectedTime("")
     setShowTimeSelection(true)
+    
+    // 🔥 NEW: Send date-only selection to agent to trigger time selection message
+    onTimeSelect(day.dateString) // Call without time parameter
   }
 
   const handleTimeSelect = (time: string) => {
