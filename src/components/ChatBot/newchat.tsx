@@ -186,6 +186,9 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
   const [showIntro, setShowIntro] = useState(true)
   const [selectedLanguage, setSelectedLanguage] = useState("English")
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null)
+  const [isResetting, setIsResetting] = useState(false)
+  // Force a fresh subtree mount on reset to avoid DOM placement conflicts
+  const [contentKey, setContentKey] = useState(0)
   
   // User guidance states
   const [showUserHints, setShowUserHints] = useState(false)
@@ -479,6 +482,56 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLanguage, sessionStatus, showIntro]);
+
+  // Reset to language selection screen when call disconnects
+  useEffect(() => {
+    if (sessionStatus === "DISCONNECTED" && !showIntro && !isResetting) {
+      console.log("🔄 [DISCONNECT] Call disconnected, resetting to language selection screen");
+      
+      // Step 1: Enter resetting state to prevent animation conflicts
+      setIsResetting(true);
+      
+      // Step 2: After a delay, reset all states
+      setTimeout(() => {
+        batchUIStateUpdate(() => {
+          // Reset all UI states
+          setActiveDisplayMode("CHAT");
+          setSelectedProperty(null);
+          setShowTimeSlots(false);
+          setIsVerifying(false);
+          setShowOtpScreen(false);
+          setShowVerificationScreen(false);
+          setVerificationSuccessful(false);
+          setShowVerificationSuccess(false);
+          setAppointment(false);
+          setIsConfirmed(false);
+          setSelectedTime(null);
+          setSelectedDay("Monday");
+          setInputValue("");
+          setInputVisible(false);
+          // Clear data states
+          setPropertyListData(null);
+          setSelectedPropertyDetails(null);
+          setPropertyGalleryData(null);
+          setLocationMapData(null);
+          setBrochureData(null);
+          setBookingDetails(null);
+          // Clear transcript items to avoid leftover animation nodes
+          setTranscriptItems([]);
+          setLastAgentTextMessage(null);
+          hasEverSentInitialHiRef.current = false;
+        });
+        
+        // Step 3: Show intro screen after states are cleared
+        setTimeout(() => {
+          setShowIntro(true);
+          setIsResetting(false);
+          // Force remount of UI subtree
+          setContentKey(prev => prev + 1);
+        }, 100);
+      }, 200);
+    }
+  }, [sessionStatus, showIntro, isResetting, batchUIStateUpdate]);
 
   useEffect(() => {
     if (sessionStatus === "CONNECTED" && initialSessionSetupDoneRef.current) {
@@ -844,6 +897,20 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
     setBookingDetails(null)
   }
 
+  // Early escape UI during reset to avoid rendering heavy tree
+  if (isResetting) {
+    return (
+      <div className="relative bg-blue-900 rounded-3xl overflow-hidden text-white flex flex-col" style={{ width: '329px', height: '611px' }}>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <Loader className="h-8 w-8 animate-spin mx-auto mb-4" />
+            <p className="text-white/80">Resetting...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="relative bg-blue-900 rounded-3xl overflow-hidden text-white flex flex-col"
@@ -890,7 +957,16 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
           <X size={20} />
         </button> */}
       </motion.div>
-      {showIntro ? (
+      {/* Keyed wrapper to force complete remount on reset */}
+      <React.Fragment key={contentKey}>
+      {isResetting ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <Loader className="h-8 w-8 animate-spin mx-auto mb-4" />
+            <p className="text-white/80">Resetting...</p>
+          </div>
+        </div>
+      ) : showIntro ? (
         <AnimatePresence mode="wait">
           <motion.div 
             key="intro"
@@ -1458,6 +1534,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
           </div>
         </>
       )}
+      </React.Fragment>
       <audio ref={audioElementRef} playsInline />
     </div>
   );

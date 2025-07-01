@@ -1,177 +1,238 @@
 import { AgentMetadata } from "@/types/types";
 
+// Utility function for fuzzy string matching
+const calculateSimilarity = (str1: string, str2: string): number => {
+    const s1 = str1.toLowerCase().trim();
+    const s2 = str2.toLowerCase().trim();
+    
+    // Exact match
+    if (s1 === s2) return 1.0;
+    
+    // Jaccard similarity for word-based matching
+    const words1 = new Set(s1.split(/\s+/));
+    const words2 = new Set(s2.split(/\s+/));
+    const intersection = new Set([...words1].filter(x => words2.has(x)));
+    const union = new Set([...words1, ...words2]);
+    const jaccardSim = intersection.size / union.size;
+    
+    // Levenshtein distance for character-based matching
+    const levenshteinSim = 1 - (levenshteinDistance(s1, s2) / Math.max(s1.length, s2.length));
+    
+    // Substring matching
+    const substringScore = (s1.includes(s2) || s2.includes(s1)) ? 0.8 : 0;
+    
+    // Spaceless matching (for "Bayz101" vs "Bayz 101")
+    const spaceless1 = s1.replace(/\s+/g, '');
+    const spaceless2 = s2.replace(/\s+/g, '');
+    const spacelessScore = spaceless1.includes(spaceless2) || spaceless2.includes(spaceless1) ? 0.7 : 0;
+    
+    // Return highest score
+    return Math.max(jaccardSim, levenshteinSim, substringScore, spacelessScore);
+};
+
+const levenshteinDistance = (str1: string, str2: string): number => {
+    const matrix = Array(str2.length + 1).fill(null).map(() => Array(str1.length + 1).fill(null));
+    
+    for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
+    for (let j = 0; j <= str2.length; j++) matrix[j][0] = j;
+    
+    for (let j = 1; j <= str2.length; j++) {
+        for (let i = 1; i <= str1.length; i++) {
+            const substitutionCost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+            matrix[j][i] = Math.min(
+                matrix[j][i - 1] + 1, // insertion
+                matrix[j - 1][i] + 1, // deletion
+                matrix[j - 1][i - 1] + substitutionCost // substitution
+            );
+        }
+    }
+    
+    return matrix[str2.length][str1.length];
+};
+
+interface PropertyMatch {
+    property: string;
+    confidence: number;
+    matchType: 'exact' | 'fuzzy' | 'partial' | 'spaceless';
+    extractedText?: string;
+}
+
 export const detectPropertyInMessage = async ({ message }: { message: string }, realEstateAgent: any) => {
     console.log(`[detectPropertyInMessage] Analyzing message: "${message}"`);
     
-    const metadata = realEstateAgent.metadata as AgentMetadata; // Added type assertion
-
-    // Skip processing for trigger messages to avoid unnecessary property detection
-    if (message.startsWith('{Trigger msg:')) {
-        console.log("[detectPropertyInMessage] Processing trigger message for property detection");
+    try {
+        const metadata = realEstateAgent.metadata as AgentMetadata;
+        const project_names = metadata?.project_names || [];
         
-        // Extract property name from trigger message - be more flexible with the pattern
-        // Match any trigger message that contains "this" followed by a property name
-        const triggerPropertyRegex = /\{Trigger msg:.*?this\s+(.+?)(?:\s+in\s+brief|\s+\})/i;
-        const match = message.match(triggerPropertyRegex);
-        
-        if (match && match[1]) {
-            let propertyNameFromTrigger = match[1].trim();
-            
-            // Clean up common suffixes that might be captured
-            propertyNameFromTrigger = propertyNameFromTrigger.replace(/(\s+in\s+brief|\s+and\s+then.*|\s+\}).*$/i, '').trim();
-            
-            console.log(`[detectPropertyInMessage] Property name extracted from trigger: "${propertyNameFromTrigger}"`);
-            
-            // Find the closest matching property name from available projects
-            const project_names = metadata?.project_names || [];
-            let matchedProperty = null;
-            
-            // First try exact match
-            if (project_names.includes(propertyNameFromTrigger)) {
-                matchedProperty = propertyNameFromTrigger;
-            } else {
-                // Try case-insensitive match
-                matchedProperty = project_names.find(p => 
-                    p.toLowerCase() === propertyNameFromTrigger.toLowerCase()
-                );
-                
-                // If still no match, try partial match
-                if (!matchedProperty) {
-                    matchedProperty = project_names.find(p => 
-                        p.toLowerCase().includes(propertyNameFromTrigger.toLowerCase()) ||
-                        propertyNameFromTrigger.toLowerCase().includes(p.toLowerCase())
-                    );
-                }
-            }
-
-            if (matchedProperty) {
-                console.log(`[detectPropertyInMessage] Matched property: "${matchedProperty}" from trigger`);
-                return {
-                    propertyDetected: true,
-                    detectedProperty: matchedProperty,
-                    shouldUpdateActiveProject: true, // Always update for trigger messages
-                    isTriggerMessage: true
-                };
-            } else {
-                console.log(`[detectPropertyInMessage] Property "${propertyNameFromTrigger}" not found in available projects:`, project_names);
-            }
+        if (!project_names.length) {
+            console.log("[detectPropertyInMessage] No properties available");
+            return { propertyDetected: false, message: "No properties available" };
         }
         
+        console.log(`[detectPropertyInMessage] Available properties:`, project_names);
+
+        // Handle trigger messages
+        if (message.startsWith('{Trigger msg:')) {
+            return handleTriggerMessage(message, project_names);
+        }
+
+        // Handle scheduling requests
+        const schedulingResult = detectSchedulingRequest(message, project_names, metadata);
+        if (schedulingResult.isScheduleRequest) {
+            return schedulingResult;
+        }
+
+        // General property detection with fuzzy matching
+        const propertyMatches = findPropertyMatches(message, project_names);
+        
+        if (propertyMatches.length === 0) {
+            console.log(`[detectPropertyInMessage] No property matches found`);
+            return { propertyDetected: false };
+        }
+
+        // Get best match (highest confidence)
+        const bestMatch = propertyMatches.reduce((best, current) => 
+            current.confidence > best.confidence ? current : best
+        );
+
+        console.log(`[detectPropertyInMessage] Best match: "${bestMatch.property}" (confidence: ${bestMatch.confidence}, type: ${bestMatch.matchType})`);
+
+        // Only accept matches with reasonable confidence
+        if (bestMatch.confidence < 0.3) {
+            console.log(`[detectPropertyInMessage] Best match confidence too low: ${bestMatch.confidence}`);
+            return { propertyDetected: false };
+        }
+
+        const shouldUpdate = metadata?.active_project !== bestMatch.property;
+        
+        return {
+            propertyDetected: true,
+            detectedProperty: bestMatch.property,
+            shouldUpdateActiveProject: shouldUpdate,
+            confidence: bestMatch.confidence,
+            matchType: bestMatch.matchType,
+            extractedText: bestMatch.extractedText
+        };
+
+    } catch (error) {
+        console.error("[detectPropertyInMessage] Error during property detection:", error);
         return { 
             propertyDetected: false, 
-            isTriggerMessage: true 
+            error: "Property detection failed",
+            message: "Unable to analyze message for property references"
+        };
+    }
+};
+
+const handleTriggerMessage = (message: string, project_names: string[]) => {
+    console.log("[detectPropertyInMessage] Processing trigger message");
+    
+    // Extract property name from trigger message
+    const triggerPropertyRegex = /\{Trigger msg:.*?(?:this|about|for)\s+(.+?)(?:\s+in\s+brief|\s+and\s+then.*|\s*\})/i;
+    const match = message.match(triggerPropertyRegex);
+    
+    if (!match || !match[1]) {
+        return { propertyDetected: false, isTriggerMessage: true };
+    }
+    
+    let propertyNameFromTrigger = match[1].trim();
+    console.log(`[detectPropertyInMessage] Property name extracted from trigger: "${propertyNameFromTrigger}"`);
+    
+    // Find best matching property
+    const matches = findPropertyMatches(propertyNameFromTrigger, project_names);
+    const bestMatch = matches.length > 0 ? matches[0] : null;
+    
+    if (bestMatch && bestMatch.confidence > 0.5) {
+        console.log(`[detectPropertyInMessage] Matched property: "${bestMatch.property}" from trigger`);
+        return {
+            propertyDetected: true,
+            detectedProperty: bestMatch.property,
+            shouldUpdateActiveProject: true,
+            isTriggerMessage: true,
+            confidence: bestMatch.confidence
         };
     }
     
-    const project_names = metadata?.project_names || [];
-    console.log(`[detectPropertyInMessage] Available properties:`, project_names);
+    console.log(`[detectPropertyInMessage] No good match found for trigger property`);
+    return { propertyDetected: false, isTriggerMessage: true };
+};
 
-    // ADDITION: Direct check for scheduling messages
-    const scheduleRegex = /^Yes, I'd like to schedule a visit for (.+?)[.!]?$/i;
-    const scheduleMatch = message.match(scheduleRegex);
+const detectSchedulingRequest = (message: string, project_names: string[], metadata: any) => {
+    // Scheduling keywords
+    const schedulingKeywords = ['schedule', 'book', 'arrange', 'set up', 'plan', 'visit', 'tour', 'viewing', 'showing', 'appointment'];
+    const hasSchedulingKeyword = schedulingKeywords.some(keyword => 
+        message.toLowerCase().includes(keyword)
+    );
     
-    // NEW: Check for scheduling intent with property reference
-    const schedulingWithPropertyRegexes = [
-        /\b(schedule|book|arrange|set up|plan) .*?(visit|tour|viewing|showing) .*?for (\w+)/i,
-        /\b(visit|tour|see|view) .*?(\w+) .*?in person/i,
-        /\b(interested|want) to .*?(visit|tour|see|view) .*?(\w+)/i
-    ];
-    
-    let propertyName = null;
-    let isScheduleRequest = false;
-    
-    // Check explicit UI button format first
-    if (scheduleMatch) {
-        propertyName = scheduleMatch[1].trim();
-        isScheduleRequest = true;
-        console.log(`[detectPropertyInMessage] Detected UI button scheduling request for: "${propertyName}"`);
+    if (!hasSchedulingKeyword) {
+        return { isScheduleRequest: false };
     }
     
-    // If no explicit match, check if it's a natural language scheduling request with property mention
-    if (!propertyName) {
-        for (const regex of schedulingWithPropertyRegexes) {
-            const match = message.match(regex);
-            if (match && match[3]) {
-                // Extract potential property name and verify against known properties
-                const potentialName = match[3].trim();
-                // Check if this substring appears in any known property name
-                const matchedProperty = project_names.find(p => 
-                    p.toLowerCase().includes(potentialName.toLowerCase()) || 
-                    potentialName.toLowerCase().includes(p.toLowerCase().replace(/\s+/g, ''))
-                );
-                
-                if (matchedProperty) {
-                    propertyName = matchedProperty;
-                    isScheduleRequest = true;
-                    console.log(`[detectPropertyInMessage] Detected natural language scheduling for: "${propertyName}"`);
-                    break;
-                }
-            }
-        }
-    }
+    console.log("[detectPropertyInMessage] Detected scheduling keywords");
     
-    if (isScheduleRequest && propertyName) {
-        // Find property ID if possible
+    // Try to extract property from scheduling message
+    const propertyMatches = findPropertyMatches(message, project_names);
+    const bestMatch = propertyMatches.length > 0 ? propertyMatches[0] : null;
+    
+    if (bestMatch && bestMatch.confidence > 0.3) {
+        console.log(`[detectPropertyInMessage] Detected scheduling request for: "${bestMatch.property}"`);
+        
+        // Find property ID
         let propertyId = null;
-        // Use type assertion to access these properties
         const metadataAny = metadata as any;
-        if (metadataAny?.project_id_map && metadataAny.project_id_map[propertyName]) {
-            propertyId = metadataAny.project_id_map[propertyName];
+        if (metadataAny?.project_id_map && metadataAny.project_id_map[bestMatch.property]) {
+            propertyId = metadataAny.project_id_map[bestMatch.property];
         } else if (metadataAny?.active_project_id && 
-                  (propertyName.toLowerCase() === metadata?.active_project?.toLowerCase())) {
+                  (bestMatch.property.toLowerCase() === metadata?.active_project?.toLowerCase())) {
             propertyId = metadataAny.active_project_id;
         }
         
-        // Return special flag for scheduling
         return {
             propertyDetected: true,
-            detectedProperty: propertyName,
+            detectedProperty: bestMatch.property,
             shouldUpdateActiveProject: true,
             isScheduleRequest: true,
-            schedulePropertyId: propertyId
+            schedulePropertyId: propertyId,
+            confidence: bestMatch.confidence
         };
     }
-
-    if (!project_names.length) {
-      return { propertyDetected: false, message: "No properties available" };
-    }
-
-    // Continue with regular property detection
-    const normalizedMessage = message.toLowerCase().trim();
-    let detectedProperty: string | null = null;
-
-    // Function to check for match (exact or spaceless)
-    const isMatch = (prop: string, msg: string) => {
-        const trimmedProp = prop.trim().toLowerCase();
-        const propNoSpaces = trimmedProp.replace(/\s+/g, '');
-        const msgNoSpaces = msg.replace(/\s+/g, '');
-        // Check for whole word match (exact) or spaceless containment
-        const regex = new RegExp(`\\b${trimmedProp.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`); // Escape special chars
-        return regex.test(msg) || msgNoSpaces.includes(propNoSpaces);
+    
+    // Scheduling detected but no clear property - might use active project
+    console.log("[detectPropertyInMessage] Scheduling detected but no clear property reference");
+    return { 
+        isScheduleRequest: true,
+        propertyDetected: false,
+        message: "Scheduling intent detected but property unclear"
     };
+};
 
-    // Check for matches
+const findPropertyMatches = (text: string, project_names: string[]): PropertyMatch[] => {
+    const matches: PropertyMatch[] = [];
+    const normalizedText = text.toLowerCase().trim();
+    
     for (const property of project_names) {
-       if (isMatch(property, normalizedMessage)) {
-          detectedProperty = property; // Use original casing
-          console.log(`[detectPropertyInMessage] Match found for: "${property}"`);
-          break;
-       }
+        const similarity = calculateSimilarity(text, property);
+        
+        if (similarity > 0.3) { // Minimum threshold
+            let matchType: PropertyMatch['matchType'] = 'fuzzy';
+            
+            if (similarity === 1.0) {
+                matchType = 'exact';
+            } else if (normalizedText.includes(property.toLowerCase()) || property.toLowerCase().includes(normalizedText)) {
+                matchType = 'partial';
+            } else if (normalizedText.replace(/\s+/g, '').includes(property.toLowerCase().replace(/\s+/g, ''))) {
+                matchType = 'spaceless';
+            }
+            
+            matches.push({
+                property,
+                confidence: similarity,
+                matchType,
+                extractedText: text
+            });
+        }
     }
-
-    if (detectedProperty && metadata?.active_project !== detectedProperty) {
-      console.log(`[detectPropertyInMessage] Detected property "${detectedProperty}" is different from active "${metadata?.active_project}".`);
-      // Return detected property; updateActiveProject should be called next by LLM if needed
-      return {
-        propertyDetected: true,
-        detectedProperty: detectedProperty,
-        shouldUpdateActiveProject: true, // Hint to LLM to call updateActiveProject
-      };
-    } else if (detectedProperty) {
-        console.log(`[detectPropertyInMessage] Detected property "${detectedProperty}" is already active.`);
-        return { propertyDetected: true, detectedProperty: detectedProperty, shouldUpdateActiveProject: false };
-    } else {
-         console.log(`[detectPropertyInMessage] No specific property detected.`);
-         return { propertyDetected: false };
-    }
+    
+    // Sort by confidence (highest first)
+    return matches.sort((a, b) => b.confidence - a.confidence);
 }; 

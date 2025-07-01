@@ -113,11 +113,6 @@ export function useConnection(
       if (audioElementRef.current) {
         audioElementRef.current.srcObject = null
         audioElementRef.current.pause()
-        if (audioElementRef.current.parentNode) {
-          audioElementRef.current.parentNode.removeChild(
-            audioElementRef.current
-          )
-        }
         audioElementRef.current = null
       }
 
