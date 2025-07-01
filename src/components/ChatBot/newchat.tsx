@@ -142,7 +142,14 @@ const shouldHideFromUI = (text: string, agentName?: string): boolean => {
   return isUIGenerated || isPendingQuestion;
 };
 
-export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
+export default function RealEstateAgent({ chatbotConfig }: RealEstateAgentProps) {
+  // --- Chatbot Configuration ---
+  const chatbotId = chatbotConfig.id;
+  const chatbotName = chatbotConfig.chatbot_name || "Real Estate AI Agent";
+  const bgColor = chatbotConfig.bg_color || "#1e3a8a"; // Default blue-900
+  const textColor = chatbotConfig.text_color || "#ffffff"; // Default white
+  const logoUrl = chatbotConfig.logo;
+  
   // --- State Declarations ---
   const [sessionStatus, setSessionStatus] =
     useState<SessionStatus>("DISCONNECTED")
@@ -900,11 +907,19 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
   // Early escape UI during reset to avoid rendering heavy tree
   if (isResetting) {
     return (
-      <div className="relative bg-blue-900 rounded-3xl overflow-hidden text-white flex flex-col" style={{ width: '329px', height: '611px' }}>
+      <div 
+        className="relative rounded-3xl overflow-hidden flex flex-col" 
+        style={{ 
+          width: '329px', 
+          height: '611px',
+          backgroundColor: bgColor,
+          color: textColor
+        }}
+      >
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <Loader className="h-8 w-8 animate-spin mx-auto mb-4" />
-            <p className="text-white/80">Resetting...</p>
+            <Loader className="h-8 w-8 animate-spin mx-auto mb-4" style={{ color: textColor }} />
+            <p style={{ color: `${textColor}cc` }}>Resetting...</p>
           </div>
         </div>
       </div>
@@ -913,18 +928,36 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
 
   return (
     <div
-      className="relative bg-blue-900 rounded-3xl overflow-hidden text-white flex flex-col"
-      style={{ width: "329px", height: "611px" }}
+      className="relative rounded-3xl overflow-hidden flex flex-col"
+      style={{ 
+        width: "329px", 
+        height: "611px",
+        backgroundColor: bgColor,
+        color: textColor 
+      }}
     >
-      <motion.div 
-        className="flex items-center p-4 border-b border-blue-800 flex-shrink-0"
+              <motion.div 
+        className="flex items-center p-4 border-b flex-shrink-0"
+        style={{ borderBottomColor: `${textColor}20` }}
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={INSTANT_TRANSITION}
       >
         <div className="flex items-center">
           <div className="bg-white rounded-full p-1 mr-2">
-            <div className="text-blue-800 w-8 h-8 flex items-center justify-center">
+            {logoUrl ? (
+              <img 
+                src={logoUrl} 
+                alt="Chatbot Logo" 
+                className="w-8 h-8 rounded-full object-cover"
+                onError={(e) => {
+                  // Fallback to default SVG if logo fails to load
+                  e.currentTarget.style.display = 'none';
+                  e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                }}
+              />
+            ) : null}
+            <div className={`text-blue-800 w-8 h-8 flex items-center justify-center ${logoUrl ? 'hidden' : ''}`}>
               <svg xmlns="http://www.w3.org/2000/svg" width="42" height="42" viewBox="0 0 42 42" fill="none">
                 <circle cx="21" cy="21" r="21" fill="white" />
                 <path d="M15.9833 12.687L11 16.2194V30.1284H15.9833V12.687Z" fill="#2563EB" />
@@ -951,7 +984,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
               </svg>
             </div>
           </div>
-          <span className="font-medium">Real Estate AI Agent</span>
+          <span className="font-medium" style={{ color: textColor }}>{chatbotName}</span>
         </div>
         {/* <button className="ml-auto p-2 hover:bg-blue-800 rounded-full transition-colors duration-100">
           <X size={20} />
@@ -978,6 +1011,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
           >
             <motion.h2 
               className="text-2xl font-medium mb-6"
+              style={{ color: textColor }}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ ...INSTANT_TRANSITION, delay: 0.05 }}
@@ -994,21 +1028,33 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
               <select
                 value={selectedLanguage}
                 onChange={handleLanguageSelect}
-                className="appearance-none bg-transparent py-2 pr-10 border-b-2 border-white w-full text-center text-xl font-medium focus:outline-none transition-all duration-100"
+                className="appearance-none bg-transparent py-2 pr-10 border-b-2 w-full text-center text-xl font-medium focus:outline-none transition-all duration-100"
+                style={{ 
+                  borderBottomColor: textColor,
+                  color: textColor 
+                }}
               >
                 {languageOptions.map(lang => (
-                  <option key={lang} value={lang} className="bg-blue-800 text-white">
+                  <option 
+                    key={lang} 
+                    value={lang} 
+                    style={{ 
+                      backgroundColor: bgColor,
+                      color: textColor 
+                    }}
+                  >
                     {lang}
                   </option>
                 ))}
               </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-white">
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2" style={{ color: textColor }}>
                 <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
               </div>
             </motion.div>
             
             <motion.p 
               className="text-xl mb-8"
+              style={{ color: textColor }}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ ...INSTANT_TRANSITION, delay: 0.15 }}
@@ -1018,7 +1064,11 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
             
             <motion.button 
               onClick={handleProceed}
-              className="bg-white text-blue-900 px-6 py-2 rounded-md font-medium hover:bg-blue-100 transition-all duration-100 active:scale-95"
+              className="px-6 py-2 rounded-md font-medium transition-all duration-100 active:scale-95"
+              style={{
+                backgroundColor: textColor,
+                color: bgColor
+              }}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ ...INSTANT_TRANSITION, delay: 0.2 }}
@@ -1049,7 +1099,11 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
               <motion.button
                 key="gallery-back"
                 onClick={handleCloseGallery}
-                className="mb-2 ml-4 self-start bg-blue-700 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg flex items-center shadow transition-all duration-100 active:scale-95"
+                className="mb-2 ml-4 self-start font-medium py-2 px-4 rounded-lg flex items-center shadow transition-all duration-100 active:scale-95"
+                style={{
+                  backgroundColor: `${textColor}30`,
+                  color: textColor
+                }}
                 variants={uiTransitionVariants}
                 initial="hidden"
                 animate="visible"
@@ -1065,7 +1119,11 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
               <motion.button
                 key="map-back"
                 onClick={handleCloseLocationMap}
-                className="mb-2 ml-4 self-start bg-blue-700 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg flex items-center shadow transition-all duration-100 active:scale-95"
+                className="mb-2 ml-4 self-start font-medium py-2 px-4 rounded-lg flex items-center shadow transition-all duration-100 active:scale-95"
+                style={{
+                  backgroundColor: `${textColor}30`,
+                  color: textColor
+                }}
                 variants={uiTransitionVariants}
                 initial="hidden"
                 animate="visible"
@@ -1081,7 +1139,11 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
               <motion.button
                 key="brochure-back"
                 onClick={handleCloseBrochure}
-                className="mb-2 ml-4 self-start bg-blue-700 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg flex items-center shadow transition-all duration-100 active:scale-95"
+                className="mb-2 ml-4 self-start font-medium py-2 px-4 rounded-lg flex items-center shadow transition-all duration-100 active:scale-95"
+                style={{
+                  backgroundColor: `${textColor}30`,
+                  color: textColor
+                }}
                 variants={uiTransitionVariants}
                 initial="hidden"
                 animate="visible"
@@ -1106,15 +1168,19 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
                 >
                   {/* Header with close button */}
                   <div className="flex items-center justify-between px-2">
-                    <h3 className="text-white font-medium text-lg">Available Properties</h3>
+                    <h3 className="font-medium text-lg" style={{ color: textColor }}>Available Properties</h3>
                     <motion.button
                       onClick={() => setActiveDisplayMode('CHAT')}
-                      className="bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full p-1 transition-all duration-100 active:scale-95"
+                      className="backdrop-blur-sm rounded-full p-1 transition-all duration-100 active:scale-95"
+                      style={{ 
+                        backgroundColor: `${textColor}20`,
+                        color: textColor
+                      }}
                       whileTap={{ scale: 0.9 }}
                       whileHover={{ scale: 1.05 }}
                       title="Close"
                     >
-                      <X size={18} className="text-white" />
+                      <X size={18} />
                     </motion.button>
                   </div>
                   <PropertyList 
@@ -1189,6 +1255,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
                   </motion.div>
                   <motion.h3 
                     className="text-xl font-semibold mb-2"
+                    style={{ color: textColor }}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ ...INSTANT_TRANSITION, delay: 0.2 }}
@@ -1197,6 +1264,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
                   </motion.h3>
                   <motion.p 
                     className="text-center"
+                    style={{ color: textColor }}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ ...INSTANT_TRANSITION, delay: 0.3 }}
@@ -1265,7 +1333,8 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
                 >
                   {lastAgentTextMessage && (
                     <motion.p 
-                      className="text-white text-xl font-medium italic mb-10"
+                      className="text-xl font-medium italic mb-10"
+                      style={{ color: textColor }}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={INSTANT_TRANSITION}
@@ -1289,16 +1358,21 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
                           initial={{ scale: 0.8, opacity: 0 }}
                           animate={{ scale: 1, opacity: 1 }}
                           transition={{ delay: 0.2, duration: 0.3 }}
-                          className="flex items-center space-x-3 bg-white/10 backdrop-blur-sm rounded-full px-4 py-3 border border-white/20"
+                          className="flex items-center space-x-3 backdrop-blur-sm rounded-full px-4 py-3 border"
+                          style={{
+                            backgroundColor: `${textColor}10`,
+                            borderColor: `${textColor}20`
+                          }}
                         >
                           <motion.div
                             animate={{ scale: [1, 1.1, 1] }}
                             transition={{ duration: 2, repeat: Infinity }}
-                            className="p-2 bg-white/20 rounded-full"
+                            className="p-2 rounded-full"
+                            style={{ backgroundColor: `${textColor}20` }}
                           >
-                            <Mic size={16} className="text-white" />
+                            <Mic size={16} style={{ color: textColor }} />
                           </motion.div>
-                          <span className="text-white text-sm font-medium">
+                          <span className="text-sm font-medium" style={{ color: textColor }}>
                             You can speak now
                           </span>
                         </motion.div>
@@ -1308,7 +1382,8 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           transition={{ delay: 0.4 }}
-                          className="text-white/60 text-xs font-medium"
+                          className="text-xs font-medium"
+                          style={{ color: `${textColor}60` }}
                         >
                           OR
                         </motion.div>
@@ -1318,7 +1393,11 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
                           initial={{ scale: 0.8, opacity: 0 }}
                           animate={{ scale: 1, opacity: 1 }}
                           transition={{ delay: 0.6, duration: 0.3 }}
-                          className="flex items-center space-x-3 bg-white/10 backdrop-blur-sm rounded-full px-4 py-3 border border-white/20"
+                          className="flex items-center space-x-3 backdrop-blur-sm rounded-full px-4 py-3 border"
+                          style={{
+                            backgroundColor: `${textColor}10`,
+                            borderColor: `${textColor}20`
+                          }}
                         >
                           <motion.div
                             animate={{ 
@@ -1330,11 +1409,12 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
                               repeat: Infinity,
                               delay: 1
                             }}
-                            className="p-2 bg-white/20 rounded-full"
+                            className="p-2 rounded-full"
+                            style={{ backgroundColor: `${textColor}20` }}
                           >
-                            <MessageSquare size={16} className="text-white" />
+                            <MessageSquare size={16} style={{ color: textColor }} />
                           </motion.div>
-                          <span className="text-white text-sm font-medium">
+                          <span className="text-sm font-medium" style={{ color: textColor }}>
                             Click the chat button to type
                           </span>
                           <motion.div
@@ -1347,7 +1427,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
                               repeat: Infinity,
                               delay: 2
                             }}
-                            className="text-white/80"
+                            style={{ color: `${textColor}80` }}
                           >
                             ⬇
                           </motion.div>
@@ -1357,7 +1437,8 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
                   </AnimatePresence>
                   {!lastAgentTextMessage && transcriptItems.length === 0 && (
                     <motion.p 
-                      className="text-white text-xl font-medium italic"
+                      className="text-xl font-medium italic"
+                      style={{ color: textColor }}
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={INSTANT_TRANSITION}
@@ -1397,7 +1478,11 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
               .map(item => (
                 <motion.div 
                   key={item.itemId} 
-                  className="absolute bottom-20 right-4 max-w-[80%] bg-blue-600 p-3 rounded-xl text-sm text-white rounded-br-none z-20 shadow-lg"
+                  className="absolute bottom-20 right-4 max-w-[80%] p-3 rounded-xl text-sm rounded-br-none z-20 shadow-lg"
+                  style={{
+                    backgroundColor: `${textColor}40`,
+                    color: textColor
+                  }}
                   initial={{ opacity: 0, x: 20, scale: 0.95 }}
                   animate={{ opacity: 1, x: 0, scale: 1 }}
                   exit={{ opacity: 0, x: 20, scale: 0.95 }}
@@ -1411,7 +1496,8 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
             {activeDisplayMode === 'PROPERTY_DETAILS' && selectedPropertyDetails && (
               <motion.div 
                 key="property-details-modal"
-                className="absolute inset-0 bg-blue-900 bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-10 p-4"
+                className="absolute inset-0 backdrop-blur-sm flex items-center justify-center z-10 p-4"
+                style={{ backgroundColor: `${bgColor}80` }}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -1443,7 +1529,8 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
                   initial="hidden"
                   animate="visible"
                   exit="exit"
-                  className="rounded-xl w-[320px] -mb-1 ml-1 h-[48px] shadow-lg bg-[#47679D]"
+                  className="rounded-xl w-[320px] -mb-1 ml-1 h-[48px] shadow-lg"
+                  style={{ backgroundColor: `${textColor}30` }}
                 >
                   <div className="flex items-center justify-between w-full px-4 py-2 rounded-lg">
                     <input
@@ -1453,12 +1540,16 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
                       onChange={(e) => setInputValue(e.target.value)} 
                       onKeyDown={handleKeyDown}
                       placeholder={sessionStatus === 'CONNECTED' ? "Type your message..." : "Connect call to type"}
-                      className="flex-1 mt-1 bg-transparent outline-none text-white placeholder:text-white placeholder:opacity-50 text-sm"
+                      className="flex-1 mt-1 bg-transparent outline-none text-sm placeholder:opacity-70"
+                      style={{ 
+                        color: textColor
+                      }}
                       disabled={sessionStatus !== 'CONNECTED'}
                     />
                     <motion.button 
                       onClick={handleSend} 
-                      className="ml-2 mt-1 text-white disabled:opacity-50 transition-all duration-100" 
+                      className="ml-2 mt-1 disabled:opacity-50 transition-all duration-100" 
+                      style={{ color: textColor }}
                       disabled={sessionStatus !== 'CONNECTED' || !inputValue.trim()}
                       whileTap={{ scale: 0.9 }}
                       whileHover={{ scale: 1.1 }}
@@ -1470,16 +1561,21 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
               )}
             </AnimatePresence>
             <motion.div 
-              className="flex justify-between items-center p-3 bg-blue-900"
+              className="flex justify-between items-center p-3"
+              style={{ backgroundColor: bgColor }}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={INSTANT_TRANSITION}
             >
               <motion.button 
                 onClick={debouncedToggleInput} 
-                className={`bg-[#47679D] p-3 rounded-full hover:bg-blue-600 transition-all duration-100 active:scale-95 ${
+                className={`p-3 rounded-full transition-all duration-100 active:scale-95 ${
                   showUserHints ? 'ring-4 ring-white/30' : ''
                 }`}
+                style={{ 
+                  backgroundColor: `${textColor}30`,
+                  color: textColor
+                }}
                 whileTap={{ scale: 0.95 }}
                 whileHover={{ scale: 1.05 }}
                 animate={showUserHints ? {
@@ -1500,13 +1596,21 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
               
               <div className="flex justify-center space-x-1"> 
                 {Array(15).fill(0).map((_, i) => (
-                  <div key={i} className="w-1 h-1 bg-white rounded-full opacity-50"></div>
+                  <div 
+                    key={i} 
+                    className="w-1 h-1 rounded-full opacity-50"
+                    style={{ backgroundColor: textColor }}
+                  ></div>
                 ))} 
               </div>
               
               <motion.button 
                 onClick={debouncedToggleMic} 
-                className={`p-3 rounded-full transition-all duration-100 active:scale-95 ${micMuted ? 'bg-gray-600' : 'bg-[#47679D] hover:bg-blue-600'}`}
+                className="p-3 rounded-full transition-all duration-100 active:scale-95"
+                style={{
+                  backgroundColor: micMuted ? '#6b7280' : `${textColor}30`,
+                  color: textColor
+                }}
                 disabled={sessionStatus !== 'CONNECTED'}
                 title={micMuted ? "Mic Off" : "Mic On"}
                 whileTap={{ scale: 0.95 }}
@@ -1517,7 +1621,7 @@ export default function RealEstateAgent({ chatbotId }: RealEstateAgentProps) {
               
               <motion.button 
                 onClick={debouncedHandleCallButtonClick}
-                className={`${sessionStatus === 'CONNECTED' ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'} p-3 rounded-full transition-all duration-100 disabled:opacity-70 active:scale-95`}
+                className={`${sessionStatus === 'CONNECTED' ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'} p-3 rounded-full transition-all duration-100 disabled:opacity-70 active:scale-95 text-white`}
                 disabled={sessionStatus === 'CONNECTING' || (!chatbotId && sessionStatus === 'DISCONNECTED')}
                 whileTap={{ scale: 0.95 }}
                 whileHover={{ scale: 1.05 }}

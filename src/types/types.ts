@@ -131,6 +131,16 @@ export interface ServerEvent {
   response?: ServerEventResponse;
 }
 
+export interface ChatbotConfig {
+  id: string;
+  chatbot_name?: string;
+  bg_color?: string;
+  text_color?: string;
+  logo?: string;
+  first_message?: string;
+  org_code: string;
+}
+
 // Kept from old types, might be replaced by simpler logging or context
 export interface LoggedEvent {
   id: number;

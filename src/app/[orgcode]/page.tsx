@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from 'next/navigation'; // Import useParams
 import { supabase } from "@/libs/supabaseClient"; // Import the Supabase client
+import { ChatbotConfig } from "@/types/types"; // Import the ChatbotConfig type
 import RealEstateAgent from "@/components/ChatBot/newchat";
 
 // Component no longer receives params prop directly
@@ -11,7 +12,7 @@ export default function ChatPage() {
   // Type assertion might be needed if TS doesn't infer string type
   const orgcode = params.orgcode as string; 
 
-  const [chatbotId, setChatbotId] = useState<string | null>(null);
+  const [chatbotConfig, setChatbotConfig] = useState<ChatbotConfig | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,40 +25,40 @@ export default function ChatPage() {
       return;
     }
 
-    console.log(`Fetching chatbotId for orgcode: ${orgcode}`);
+    console.log(`Fetching chatbot config for orgcode: ${orgcode}`);
     setError(null);
     setIsLoading(true);
 
-    const fetchChatbotId = async () => {
+    const fetchChatbotConfig = async () => {
       try {
-          const { data, error: dbError } = await supabase // Renamed error variable
+          const { data, error: dbError } = await supabase
             .from("chatbot") 
-            .select("id")
+            .select("id, chatbot_name, bg_color, text_color, logo, first_message, org_code")
             .eq("org_code", orgcode) 
             .single();
 
           if (dbError) {
-            console.error("Error fetching chatbot ID:", dbError);
+            console.error("Error fetching chatbot config:", dbError);
             setError(`Failed to find chatbot for org: ${orgcode}. ${dbError.message}`);
-            setChatbotId(null);
+            setChatbotConfig(null);
           } else if (data && data.id) {
-            console.log(`Found chatbotId: ${data.id}`);
-            setChatbotId(data.id);
+            console.log(`Found chatbot config:`, data);
+            setChatbotConfig(data);
           } else {
             console.warn(`No chatbot found for orgcode: ${orgcode}`);
             setError(`No chatbot configuration found for organization: ${orgcode}`);
-            setChatbotId(null);
+            setChatbotConfig(null);
           }
       } catch (err: any) {
-           console.error("Exception during fetchChatbotId:", err);
+           console.error("Exception during fetchChatbotConfig:", err);
            setError(`An unexpected error occurred: ${err.message}`);
-           setChatbotId(null);
+           setChatbotConfig(null);
       } finally {
            setIsLoading(false);
       }
     };
 
-    fetchChatbotId();
+    fetchChatbotConfig();
     // Rerun effect if orgcode changes (which happens on route change)
   }, [orgcode]); 
 
@@ -69,10 +70,10 @@ export default function ChatPage() {
      {error && (
          <div className="text-center p-4 text-red-500">Error: {error}</div>
      )}
-     {!isLoading && !error && chatbotId && (
-        <RealEstateAgent chatbotId={chatbotId} />
+     {!isLoading && !error && chatbotConfig && (
+        <RealEstateAgent chatbotConfig={chatbotConfig} />
      )}
-     {!isLoading && !error && !chatbotId && (
+     {!isLoading && !error && !chatbotConfig && (
          <div className="text-center p-4 text-yellow-500">Chatbot not available for this organization.</div>
      )}
    </div>

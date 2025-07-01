@@ -1,4 +1,4 @@
-import type { AgentMetadata } from "@/types/types"
+import type { AgentMetadata, ChatbotConfig } from "@/types/types"
 
 // Extended AgentMetadata interface to include new authentication flow properties
 export interface ExtendedAgentMetadata extends AgentMetadata {
@@ -48,7 +48,7 @@ export interface PropertyProps {
 
 // --- Add Props Interface ---
 export interface RealEstateAgentProps {
-  chatbotId: string // Receive chatbotId from parent page
+  chatbotConfig: ChatbotConfig // Receive chatbot configuration from parent page
 }
 
 // --- UI Display Modes ---
