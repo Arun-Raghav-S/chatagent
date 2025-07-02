@@ -17,6 +17,10 @@ export default function BrochureViewer({
   console.log("[BrochureViewer] Rendering with:", { propertyName, brochureUrl });
 
   const handleDownload = () => {
+    if (!brochureUrl || brochureUrl.trim() === '') {
+      alert('Brochure is not available for download at the moment.');
+      return;
+    }
     // Create a temporary link element to trigger download
     const link = document.createElement('a')
     link.href = brochureUrl
@@ -28,8 +32,15 @@ export default function BrochureViewer({
   }
 
   const handleViewOnline = () => {
+    if (!brochureUrl || brochureUrl.trim() === '') {
+      alert('Brochure is not available for viewing at the moment.');
+      return;
+    }
     window.open(brochureUrl, '_blank', 'noopener,noreferrer')
   }
+
+  // Check if brochure URL is available
+  const isBrochureAvailable = brochureUrl && brochureUrl.trim() !== ''
 
   return (
     <div className="bg-white rounded-lg shadow-lg max-w-md w-full mx-auto overflow-hidden">
@@ -55,16 +66,27 @@ export default function BrochureViewer({
         {/* Brochure Icon and Description */}
         <div className="text-center py-12">
           <FileText size={80} className="mx-auto mb-6 text-blue-600" />
-          <p className="text-gray-600 mb-8 text-base leading-relaxed">
-            Click the buttons below to download or view the brochure for {propertyName}
-          </p>
+          {isBrochureAvailable ? (
+            <p className="text-gray-600 mb-8 text-base leading-relaxed">
+              Click the buttons below to download or view the brochure for {propertyName}
+            </p>
+          ) : (
+            <p className="text-gray-600 mb-8 text-base leading-relaxed">
+              The brochure for {propertyName} is currently not available. Please contact us for more information.
+            </p>
+          )}
         </div>
 
         {/* Action Buttons */}
         <div className="space-y-4">
           <button
             onClick={handleDownload}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-4 px-4 rounded-lg flex items-center justify-center transition-colors text-base"
+            disabled={!isBrochureAvailable}
+            className={`w-full font-medium py-4 px-4 rounded-lg flex items-center justify-center transition-colors text-base ${
+              isBrochureAvailable 
+                ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+            }`}
           >
             <Download size={18} className="mr-3" />
             Download Brochure
@@ -72,7 +94,12 @@ export default function BrochureViewer({
           
           <button
             onClick={handleViewOnline}
-            className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-4 px-4 rounded-lg flex items-center justify-center transition-colors text-base"
+            disabled={!isBrochureAvailable}
+            className={`w-full font-medium py-4 px-4 rounded-lg flex items-center justify-center transition-colors text-base ${
+              isBrochureAvailable 
+                ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' 
+                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+            }`}
           >
             <ExternalLink size={18} className="mr-3" />
             View Online

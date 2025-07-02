@@ -8,6 +8,8 @@ export interface ExtendedAgentMetadata extends AgentMetadata {
     | "from_scheduling_verification"
     | "from_question_auth"
   pending_question?: string
+  property_name?: string
+  property_id_to_schedule?: string
 }
 
 export interface PropertyUnit {

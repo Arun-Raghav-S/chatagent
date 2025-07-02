@@ -5,9 +5,32 @@ import {
   PropertyGalleryData,
   LocationMapData,
   BrochureData,
+  ActiveDisplayMode,
 } from "../newchat_types"
 import { generateSafeId } from "../newchat_utils"
 import { AgentConfig, AgentMetadata, TranscriptItem } from "@/types/types"
+
+interface PropertyApiResponse {
+  id?: string;
+  name?: string;
+  price?: string;
+  area?: string;
+  description?: string;
+  images?: PropertyImage[];
+  amenities?: Array<{ name: string } | string>;
+  units?: Array<{ type: string } | string>;
+  location?: {
+    city?: string;
+    mapUrl?: string;
+    coords?: string;
+  };
+  websiteUrl?: string;
+  brochure?: string;
+}
+
+interface ExtendedAgentMetadata extends AgentMetadata {
+  flow_context?: string;
+}
 
 export function usePropertyData(
   selectedAgentConfigSet: AgentConfig[] | null,
@@ -18,7 +41,7 @@ export function usePropertyData(
     text: string,
     properties?: PropertyProps[]
   ) => void,
-  setActiveDisplayMode: (mode: any) => void,
+  setActiveDisplayMode: (mode: ActiveDisplayMode) => void,
   sendTriggerMessage: (triggerText: string) => void,
   sessionStatus: string,
   transcriptItems: TranscriptItem[],
@@ -38,6 +61,8 @@ export function usePropertyData(
   )
   const [brochureData, setBrochureData] = useState<BrochureData | null>(null)
   const lastPropertyQueryRef = useRef<string | null>(null)
+  const isProcessingRef = useRef<boolean>(false)
+  const hasTriggeredLoadRef = useRef<boolean>(false)
 
   const handlePropertySelect = (property: PropertyProps) => {
     console.log(`[UI] Property selected: ${property.name} (${property.id})`)
@@ -71,12 +96,14 @@ export function usePropertyData(
 
   const handleGetAllProperties = useCallback(async () => {
     console.log("[UI] Attempting to load all properties directly")
-    if (propertyListData || isLoadingProperties) {
+    if (propertyListData || isLoadingProperties || isProcessingRef.current) {
       console.log(
         "[UI] Properties already loaded or loading in progress, skipping request"
       )
       return
     }
+
+    isProcessingRef.current = true
 
     if (
       !selectedAgentConfigSet ||
@@ -86,11 +113,8 @@ export function usePropertyData(
       console.error(
         "[UI] Cannot load properties - missing agent config or project IDs"
       )
-      addTranscriptMessage(
-        generateSafeId(),
-        "system",
-        "Unable to load properties. Please try again later or ask for specific property information."
-      )
+      // Don't add transcript message here to avoid infinite loop
+      isProcessingRef.current = false
       return
     }
 
@@ -101,17 +125,14 @@ export function usePropertyData(
       console.error(
         "[UI] Real estate agent or getProjectDetails function not found"
       )
-      addTranscriptMessage(
-        generateSafeId(),
-        "system",
-        "Property information unavailable. Please try again later."
-      )
+      // Don't add transcript message here to avoid infinite loop
+      isProcessingRef.current = false
       return
     }
 
     try {
       setIsLoadingProperties(true)
-      addTranscriptMessage(generateSafeId(), "system", "Loading properties...")
+      // Don't add loading message to avoid infinite loop
       console.log(
         `[UI] Calling getProjectDetails with all project_ids: ${agentMetadata.project_ids.join(
           ", "
@@ -125,7 +146,7 @@ export function usePropertyData(
         Array.isArray(result.properties) &&
         result.properties.length > 0
       ) {
-        const validatedProperties = result.properties.map((property: any) => {
+        const validatedProperties = result.properties.map((property: PropertyApiResponse) => {
           let mainImage = "/placeholder.svg"
           let galleryImages: PropertyImage[] = []
 
@@ -138,7 +159,7 @@ export function usePropertyData(
               mainImage = property.images[0].url
             }
             if (property.images.length > 1) {
-              galleryImages = property.images.slice(1).map((img: any) => {
+              galleryImages = property.images.slice(1).map((img: PropertyImage) => {
                 return {
                   url: img.url,
                   alt: img.alt || `${property.name} image`,
@@ -149,7 +170,7 @@ export function usePropertyData(
           }
 
           const amenitiesArray = Array.isArray(property.amenities)
-            ? property.amenities.map((amenity: any) => {
+            ? property.amenities.map((amenity: { name: string } | string) => {
                 if (typeof amenity === "string") {
                   return { name: amenity }
                 }
@@ -158,7 +179,7 @@ export function usePropertyData(
             : []
 
           const unitsArray = Array.isArray(property.units)
-            ? property.units.map((unit: any) => {
+            ? property.units.map((unit: { type: string } | string) => {
                 if (typeof unit === "string") {
                   return { type: unit }
                 }
@@ -190,46 +211,31 @@ export function usePropertyData(
           `[UI] Setting propertyListData with ${validatedProperties.length} validated properties`
         )
         setPropertyListData(validatedProperties)
-        const messageText = `Here are ${validatedProperties.length} properties available.`
-        addTranscriptMessage(
-          generateSafeId(),
-          "assistant",
-          messageText,
-          validatedProperties
-        )
+        // Don't add transcript message here to avoid infinite loop
+        // Properties will be displayed via UI state change
       } else {
         console.warn("[UI] No properties found or invalid response format")
         if (result.error) {
           console.error("[UI] Error loading properties:", result.error)
-          addTranscriptMessage(
-            generateSafeId(),
-            "system",
-            `Error loading properties: ${result.error}`
-          )
+          // Don't add transcript message here to avoid infinite loop
         } else {
-          addTranscriptMessage(
-            generateSafeId(),
-            "system",
-            "No properties available at this time."
-          )
+          // Don't add transcript message here to avoid infinite loop
+          console.log("[UI] No properties available at this time.")
         }
       }
     } catch (error) {
       console.error("[UI] Error in handleGetAllProperties:", error)
-      addTranscriptMessage(
-        generateSafeId(),
-        "system",
-        "An error occurred while loading properties. Please try again later."
-      )
+      // Don't add transcript message here to avoid infinite loop
     } finally {
       setIsLoadingProperties(false)
+      isProcessingRef.current = false
+      // Reset trigger flag after processing completes (success or failure)
+      hasTriggeredLoadRef.current = false
     }
   }, [
     selectedAgentConfigSet,
     agentMetadata,
     addTranscriptMessage,
-    propertyListData,
-    isLoadingProperties,
   ])
 
   const handleCloseGallery = () => {
@@ -251,22 +257,25 @@ export function usePropertyData(
   useEffect(() => {
     // CRITICAL: Skip property loading during authentication to preserve verification UI
     const isInAuthenticationFlow = selectedAgentName === "authentication" || 
-                                  (agentMetadata as any)?.flow_context === "from_question_auth"
+                                  (agentMetadata as ExtendedAgentMetadata)?.flow_context === "from_question_auth"
     
     if (isInAuthenticationFlow) {
       console.log("[Effect] 🔐 AUTHENTICATION MODE: Skipping property loading to preserve verification UI")
       return
     }
 
+    // Skip if already processing, already have data, or already triggered load
+    if (isProcessingRef.current || propertyListData || isLoadingProperties || hasTriggeredLoadRef.current) {
+      return
+    }
+
+    // Only trigger on specific conditions to avoid infinite loops
     if (
       sessionStatus === "CONNECTED" &&
-      !propertyListData &&
       !selectedPropertyDetails &&
-      !isLoadingProperties &&
-      initialSessionSetupDoneRef.current
+      initialSessionSetupDoneRef.current &&
+      transcriptItems.length > 0
     ) {
-      if (transcriptItems.length === 0) return
-
       const lastUserMessage = [...transcriptItems]
         .filter(item => item.type === "MESSAGE" && item.role === "user")
         .pop()
@@ -283,24 +292,6 @@ export function usePropertyData(
 
         if (lastPropertyQueryRef.current === lastUserMessage.itemId && !isPendingQuestion) {
           console.log("[Effect] Skipping already processed message:", text)
-          return
-        }
-
-        const veryLastItem = transcriptItems[transcriptItems.length - 1]
-        const isLoadingMessage =
-          veryLastItem?.role === "system" &&
-          veryLastItem?.text === "Loading properties..."
-        const isResultsMessage =
-          veryLastItem?.role === "assistant" &&
-          veryLastItem?.text?.includes("properties I found")
-        const isErrorMessage =
-          veryLastItem?.role === "system" &&
-          veryLastItem?.text?.startsWith("Error loading properties")
-
-        if (isLoadingMessage || isResultsMessage || isErrorMessage) {
-          console.log(
-            "[Effect Check] Skipping keyword check as last message seems related to property loading."
-          )
           return
         }
 
@@ -343,6 +334,7 @@ export function usePropertyData(
             lastUserMessage.agentName
           )
           lastPropertyQueryRef.current = lastUserMessage.itemId
+          hasTriggeredLoadRef.current = true
           handleGetAllProperties()
         } else {
           console.log(
@@ -357,9 +349,7 @@ export function usePropertyData(
   }, [
     transcriptItems,
     sessionStatus,
-    propertyListData,
     selectedPropertyDetails,
-    isLoadingProperties,
     handleGetAllProperties,
     initialSessionSetupDoneRef,
     selectedAgentName,

@@ -30,7 +30,7 @@ import OTPInput from "../Appointment/otp"
 import BookingDetailsCard from "../Appointment/BookingDetailsCard"
 
 // Agent Logic Imports
-import { SessionStatus, AgentConfig, AgentMetadata, TranscriptItem } from "@/types/types"
+import { SessionStatus, AgentConfig, AgentMetadata, ServerEvent } from "@/types/types"
 import { allAgentSets, defaultAgentSetKey } from "@/agentConfigs"
 
 // Import hooks
@@ -50,6 +50,13 @@ import {
   ActiveDisplayMode,
   ExtendedAgentMetadata,
 } from "./newchat_types"
+
+// Initialize cache utilities in development
+if (process.env.NODE_ENV === 'development') {
+  import('../../agentConfigs/realEstate/tools/cacheUtils').then(() => {
+    console.log('🔧 Property cache utilities loaded for development');
+  });
+}
 
 // --- OPTIMIZED ANIMATION CONFIGURATIONS ---
 const FAST_SPRING = { type: "spring", stiffness: 500, damping: 35 }
@@ -86,10 +93,10 @@ const uiTransitionVariants = {
 }
 
 // Debounce utility for preventing multiple rapid clicks
-const useDebounce = (callback: (...args: any[]) => void, delay: number) => {
+const useDebounce = (callback: (...args: unknown[]) => void, delay: number) => {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   
-  return useCallback((...args: any[]) => {
+  return useCallback((...args: unknown[]) => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current)
     }
@@ -153,7 +160,7 @@ export default function RealEstateAgent({ chatbotConfig }: RealEstateAgentProps)
   // --- State Declarations ---
   const [sessionStatus, setSessionStatus] =
     useState<SessionStatus>("DISCONNECTED")
-  const [selectedAgentConfigSet, setSelectedAgentConfigSet] = useState<
+  const [selectedAgentConfigSet] = useState<
     AgentConfig[] | null
   >(allAgentSets[defaultAgentSetKey] || null)
   const [selectedAgentName, setSelectedAgentName] = useState<string>(
@@ -162,18 +169,18 @@ export default function RealEstateAgent({ chatbotConfig }: RealEstateAgentProps)
   const [agentMetadata, setAgentMetadata] = useState<AgentMetadata | null>(null)
   const [activeDisplayMode, setActiveDisplayMode] =
     useState<ActiveDisplayMode>("CHAT")
-  const [appointment, setAppointment] = useState(false)
   const [selectedProperty, setSelectedProperty] =
     useState<PropertyProps | null>(null)
   const [selectedDay, setSelectedDay] = useState<string>("Monday")
   const [selectedTime, setSelectedTime] = useState<string | null>(null)
-  const [isConfirmed, setIsConfirmed] = useState<boolean>(false)
   const [showTimeSlots, setShowTimeSlots] = useState<boolean>(false)
   const [availableSlots, setAvailableSlots] = useState<Record<string, string[]>>(
     {}
   )
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [showVerificationScreen, setShowVerificationScreen] =
     useState<boolean>(false)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [showOtpScreen, setShowOtpScreen] = useState<boolean>(false)
   const [verificationData, setVerificationData] = useState<{
     name: string
@@ -181,12 +188,18 @@ export default function RealEstateAgent({ chatbotConfig }: RealEstateAgentProps)
     date: string
     time: string
   }>({ name: "", phone: "", date: "", time: "" })
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [verificationSuccessful, setVerificationSuccessful] =
     useState<boolean>(false)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [showVerificationSuccess, setShowVerificationSuccess] =
     useState<boolean>(false)
   const [isVerifying, setIsVerifying] = useState<boolean>(false)
   const [startTime, setStartTime] = useState<string | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [appointment, setAppointment] = useState(false)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [isConfirmed, setIsConfirmed] = useState<boolean>(false)
   const [inputValue, setInputValue] = useState("")
   const [inputVisible, setInputVisible] = useState(false)
   const [micMuted, setMicMuted] = useState(false)
@@ -206,9 +219,8 @@ export default function RealEstateAgent({ chatbotConfig }: RealEstateAgentProps)
   const inputRef = useRef<HTMLInputElement>(null)
   const prevAgentNameRef = useRef<string | null>(null)
   const initialSessionSetupDoneRef = useRef<boolean>(false)
-  const handleServerEventRef = useRef<(event: any) => void>(() => {})
+  const handleServerEventRef = useRef<(event: ServerEvent) => void>(() => {})
   const hasShownSuccessMessageRef = useRef<boolean>(false)
-  const pendingQuestionProcessedRef = useRef<boolean>(false)
   const hasEverSentInitialHiRef = useRef<boolean>(false)
 
   // --- Custom Hooks (Ordered to resolve dependencies) ---
@@ -225,7 +237,6 @@ export default function RealEstateAgent({ chatbotConfig }: RealEstateAgentProps)
   } = useTranscript(selectedAgentName)
 
   const {
-    pcRef,
     dcRef,
     audioElementRef,
     connectToRealtime,
@@ -240,12 +251,12 @@ export default function RealEstateAgent({ chatbotConfig }: RealEstateAgentProps)
   )
 
   const sendClientEvent = useCallback(
-    (eventObj: any, eventNameSuffix = "") => {
+    (eventObj: Record<string, unknown>, eventNameSuffix = "") => {
       if (dcRef.current && dcRef.current.readyState === "open") {
         dcRef.current.send(JSON.stringify(eventObj))
       } else {
         console.error(
-          `[Send Event Error] Data channel not open. Attempted to send: ${eventObj.type} ${eventNameSuffix}`,
+          `[Send Event Error] Data channel not open. Attempted to send: ${(eventObj as { type?: string }).type} ${eventNameSuffix}`,
           eventObj
         )
         addTranscriptMessage(
@@ -338,7 +349,6 @@ export default function RealEstateAgent({ chatbotConfig }: RealEstateAgentProps)
     handleOtpSubmit,
     handleKeyDown,
     handleCallButtonClick,
-    commitAudioBuffer,
     toggleMic,
     sendTriggerMessage,
     sendSimulatedUserMessage,
@@ -549,8 +559,8 @@ export default function RealEstateAgent({ chatbotConfig }: RealEstateAgentProps)
   useEffect(() => {
     if (sessionStatus === "CONNECTED" && !audioContext) {
       try {
-        const newAudioContext = new (window.AudioContext ||
-          (window as any).webkitAudioContext)()
+        const AudioContextClass = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+        const newAudioContext = new (AudioContextClass || AudioContext)()
         setAudioContext(newAudioContext)
       } catch (e) {
         console.error("[Audio] Error initializing audio context:", e)
@@ -684,7 +694,7 @@ export default function RealEstateAgent({ chatbotConfig }: RealEstateAgentProps)
       setShowOtpScreen(false)
       setActiveDisplayMode("SCHEDULING_FORM")
       if (!selectedProperty) {
-        const metadata = agentMetadata as any
+        const metadata = agentMetadata as ExtendedAgentMetadata
         if (metadata?.property_id_to_schedule) {
           const propertyName = metadata.property_name || "Selected Property"
           setSelectedProperty({
@@ -863,12 +873,7 @@ export default function RealEstateAgent({ chatbotConfig }: RealEstateAgentProps)
     "German", "Chinese", "Japanese", "Arabic", "Russian"
   ]
 
-  const handleReset = () => {
-    setAppointment(false)
-    setSelectedProperty(null)
-    setSelectedTime(null)
-    setIsConfirmed(false)
-  }
+
 
   // Scheduling navigation handlers
   const handleSchedulingBack = () => {
@@ -1075,7 +1080,7 @@ export default function RealEstateAgent({ chatbotConfig }: RealEstateAgentProps)
               whileTap={{ scale: 0.95 }}
               whileHover={{ scale: 1.02 }}
             >
-              Let's go
+              Let&apos;s go
             </motion.button>
           </motion.div>
         </AnimatePresence>

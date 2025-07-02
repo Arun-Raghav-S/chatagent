@@ -48,7 +48,9 @@ export function useConnection(
       if (!audioElementRef.current) {
         audioElementRef.current = document.createElement("audio")
         audioElementRef.current.autoplay = true
-        ;(audioElementRef.current as any).playsInline = true
+        if ('playsInline' in audioElementRef.current) {
+          (audioElementRef.current as HTMLAudioElement & { playsInline: boolean }).playsInline = true
+        }
         document.body.appendChild(audioElementRef.current)
         audioElementRef.current.style.display = "none"
       }
@@ -73,12 +75,13 @@ export function useConnection(
         dcRef.current = null
       })
 
-      dc.addEventListener("error", (err: any) => {
+      dc.addEventListener("error", (err: Event) => {
         console.error("Data Channel Error:", err)
+        const errorMessage = err instanceof ErrorEvent ? err.message : "Unknown DC error"
         addTranscriptMessage(
           "system-dc-error",
           "system",
-          `Connection error: ${err?.message || "Unknown DC error"}`
+          `Connection error: ${errorMessage}`
         )
         setSessionStatus("DISCONNECTED")
       })
@@ -91,12 +94,13 @@ export function useConnection(
           console.error("Error parsing server event:", error, e.data)
         }
       })
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Unknown error"
       console.error("Error connecting to realtime:", err)
       addTranscriptMessage(
         "system-conn-error",
         "system",
-        `Connection failed: ${err.message}`
+        `Connection failed: ${errorMessage}`
       )
       setSessionStatus("DISCONNECTED")
     }
