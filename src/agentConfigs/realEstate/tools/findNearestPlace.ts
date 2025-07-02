@@ -1,7 +1,17 @@
-import { TranscriptItem } from "@/types/types";
 import { checkAuthenticationOnly } from './trackUserMessage';
 
-export const findNearestPlace = async ({ query, reference_property }: { query: string; reference_property: string }, realEstateAgent: any, transcript: TranscriptItem[] = []) => {
+interface RealEstateAgent {
+  metadata?: {
+    project_locations?: Record<string, string>;
+  };
+}
+
+interface NearestPlace {
+  name: string;
+  address?: string;
+}
+
+export const findNearestPlace = async ({ query, reference_property }: { query: string; reference_property: string }, realEstateAgent: RealEstateAgent) => {
     console.log(`[findNearestPlace] Finding nearest place: "${query}" from property "${reference_property}"`);
     
     // CRITICAL: Check authentication before processing user request
@@ -58,6 +68,7 @@ export const findNearestPlace = async ({ query, reference_property }: { query: s
                 headers: {
                     "Content-Type": "application/json",
                     Authorization: `Bearer ${supabaseAnonKey}`,
+
                 },
                 body: JSON.stringify({
                     action: "findNearestPlace",
@@ -69,6 +80,11 @@ export const findNearestPlace = async ({ query, reference_property }: { query: s
         );
 
         const data = await response.json();
+        
+        // Debug logging to understand the response structure
+        console.log("[findNearestPlace] Response status:", response.status, response.statusText);
+        console.log("[findNearestPlace] Response data:", data);
+        console.log("[findNearestPlace] Data type and keys:", typeof data, Object.keys(data));
 
         if (response.ok && data.nearestPlaces && Array.isArray(data.nearestPlaces)) {
             console.log(`[findNearestPlace] Found ${data.nearestPlaces.length} nearest places:`, data.nearestPlaces);
@@ -76,7 +92,7 @@ export const findNearestPlace = async ({ query, reference_property }: { query: s
             // Format the results into a concise, brief string - just name and location
             let resultMessage = "";
             if (data.nearestPlaces.length > 0) {
-                resultMessage = data.nearestPlaces.map((place: any, index: number) => {
+                resultMessage = data.nearestPlaces.map((place: NearestPlace, index: number) => {
                     // Extract just the essential location info (first part before comma usually)
                     const briefLocation = place.address ? place.address.split(',')[0] : 'Location not available';
                     return `${index + 1}. ${place.name} - ${briefLocation}`;
@@ -92,25 +108,28 @@ export const findNearestPlace = async ({ query, reference_property }: { query: s
                 message: `Here are the nearest ${query.toLowerCase()} near ${reference_property}:`
             };
         } else if (response.ok && data.error) {
-            console.warn(`[findNearestPlace] Edge function returned an error: ${data.error}`);
+            const errorMessage = typeof data.error === 'object' ? JSON.stringify(data.error) : data.error;
+            console.warn(`[findNearestPlace] Edge function returned an error:`, data.error);
             return { 
-                error: data.error,
+                error: errorMessage,
                 ui_display_hint: 'CHAT',
-                message: `Sorry, I couldn't find nearby places: ${data.error}`
+                message: `Sorry, I couldn't find nearby places: ${errorMessage}`
             };
         } else {
+            const errorMessage = typeof data.error === 'object' ? JSON.stringify(data.error) : (data.error || response.statusText);
             console.error("[findNearestPlace] Edge function error:", data.error || response.statusText);
             console.error("[findNearestPlace] Full response data:", data);
             return { 
-                error: data.error || "Error calling findNearestPlace edge function.",
+                error: errorMessage,
                 ui_display_hint: 'CHAT',
                 message: "Sorry, there was an error finding nearby places."
             };
         }
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("[findNearestPlace] Error calling edge function:", error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         return { 
-            error: `Exception finding nearest place: ${error.message}`,
+            error: `Exception finding nearest place: ${errorMessage}`,
             ui_display_hint: 'CHAT',
             message: "Sorry, an unexpected error occurred while finding nearby places."
         };
