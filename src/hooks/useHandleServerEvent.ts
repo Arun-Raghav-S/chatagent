@@ -386,56 +386,9 @@ export function useHandleServerEvent({
               console.error("🚨🚨🚨 [SCHEDULING FLOW] Error calling initiateScheduling:", error);
             }
           }
-        } else if (fnResult && fnResult.suggested_next_action) {
-          // CRITICAL: Handle suggested_next_action from updateActiveProject to continue tool chain
-          // Only execute suggested actions if NOT in a scheduling flow
-          console.log("[handleFunctionCall] Received suggested_next_action:", fnResult.suggested_next_action);
-          
-          const suggestedAction = fnResult.suggested_next_action;
-          if (suggestedAction.tool_name === 'getProjectDetails') {
-            console.log("[handleFunctionCall] Automatically calling getProjectDetails for newly active property");
-            
-            // Get the current agent and call getProjectDetails
-            const currentAgent = selectedAgentConfigSet?.find(a => a.name === selectedAgentName);
-            const getProjectDetailsTool = currentAgent?.toolLogic?.getProjectDetails;
-            
-            if (typeof getProjectDetailsTool === 'function') {
-              try {
-                const projectDetailsResult = await getProjectDetailsTool({
-                  project_name: suggestedAction.project_name
-                }, transcriptItems || []);
-                console.log("[handleFunctionCall] Auto getProjectDetails result:", projectDetailsResult);
-                
-                // Add the project details result to the conversation
-                if (projectDetailsResult && projectDetailsResult.message) {
-                  const newMessageId = generateSafeId();
-                  sendClientEvent({
-                    type: "conversation.item.create", 
-                    item: {
-                      id: newMessageId,
-                      type: "message",
-                      role: "assistant",
-                      content: [{ type: "text", text: projectDetailsResult.message }]
-                    }
-                  }, "(auto project details after updateActiveProject)");
-                  
-                  // Handle UI display hint if present
-                  if (projectDetailsResult.ui_display_hint) {
-                    setActiveDisplayMode(projectDetailsResult.ui_display_hint as ActiveDisplayMode);
-                    
-                    if (projectDetailsResult.ui_display_hint === 'PROPERTY_DETAILS' && projectDetailsResult.property_details) {
-                      setSelectedPropertyDetails(projectDetailsResult.property_details);
-                    } else if (projectDetailsResult.ui_display_hint === 'PROPERTY_LIST' && projectDetailsResult.properties) {
-                      setPropertyListData(projectDetailsResult.properties);
-                    }
-                  }
-                }
-              } catch (error) {
-                console.error("[handleFunctionCall] Error calling auto getProjectDetails:", error);
-              }
-            }
-          }
-        }
+        } 
+        // ✅ REMOVED: No more automatic tool calling after updateActiveProject
+        // Let the LLM intelligently choose the next tool based on user intent
 
         // --- Centralized UI Update Logic based on fnResult ---
         if (fnResult && fnResult.ui_display_hint) {

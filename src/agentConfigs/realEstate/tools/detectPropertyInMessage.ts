@@ -1,4 +1,10 @@
-import { AgentMetadata } from "@/types/types";
+import { AgentMetadata as BaseAgentMetadata } from "@/types/types";
+
+// Extended AgentMetadata with real estate specific fields
+interface AgentMetadata extends BaseAgentMetadata {
+  project_id_map?: Record<string, string>;
+  active_project_id?: string;
+}
 
 // Utility function for fuzzy string matching
 const calculateSimilarity = (str1: string, str2: string): number => {
@@ -57,7 +63,7 @@ interface PropertyMatch {
     extractedText?: string;
 }
 
-export const detectPropertyInMessage = async ({ message }: { message: string }, realEstateAgent: any) => {
+export const detectPropertyInMessage = async ({ message }: { message: string }, realEstateAgent: { metadata: AgentMetadata }) => {
     console.log(`[detectPropertyInMessage] Analyzing message: "${message}"`);
     
     try {
@@ -76,13 +82,7 @@ export const detectPropertyInMessage = async ({ message }: { message: string }, 
             return handleTriggerMessage(message, project_names);
         }
 
-        // Handle scheduling requests
-        const schedulingResult = detectSchedulingRequest(message, project_names, metadata);
-        if (schedulingResult.isScheduleRequest) {
-            return schedulingResult;
-        }
-
-        // General property detection with fuzzy matching
+        // SIMPLIFIED: Just detect property names, let LLM decide intent through tool selection
         const propertyMatches = findPropertyMatches(message, project_names);
         
         if (propertyMatches.length === 0) {
@@ -135,7 +135,7 @@ const handleTriggerMessage = (message: string, project_names: string[]) => {
         return { propertyDetected: false, isTriggerMessage: true };
     }
     
-    let propertyNameFromTrigger = match[1].trim();
+    const propertyNameFromTrigger = match[1].trim();
     console.log(`[detectPropertyInMessage] Property name extracted from trigger: "${propertyNameFromTrigger}"`);
     
     // Find best matching property
@@ -155,55 +155,6 @@ const handleTriggerMessage = (message: string, project_names: string[]) => {
     
     console.log(`[detectPropertyInMessage] No good match found for trigger property`);
     return { propertyDetected: false, isTriggerMessage: true };
-};
-
-const detectSchedulingRequest = (message: string, project_names: string[], metadata: any) => {
-    // Scheduling keywords
-    const schedulingKeywords = ['schedule', 'book', 'arrange', 'set up', 'plan', 'visit', 'tour', 'viewing', 'showing', 'appointment'];
-    const hasSchedulingKeyword = schedulingKeywords.some(keyword => 
-        message.toLowerCase().includes(keyword)
-    );
-    
-    if (!hasSchedulingKeyword) {
-        return { isScheduleRequest: false };
-    }
-    
-    console.log("[detectPropertyInMessage] Detected scheduling keywords");
-    
-    // Try to extract property from scheduling message
-    const propertyMatches = findPropertyMatches(message, project_names);
-    const bestMatch = propertyMatches.length > 0 ? propertyMatches[0] : null;
-    
-    if (bestMatch && bestMatch.confidence > 0.3) {
-        console.log(`[detectPropertyInMessage] Detected scheduling request for: "${bestMatch.property}"`);
-        
-        // Find property ID
-        let propertyId = null;
-        const metadataAny = metadata as any;
-        if (metadataAny?.project_id_map && metadataAny.project_id_map[bestMatch.property]) {
-            propertyId = metadataAny.project_id_map[bestMatch.property];
-        } else if (metadataAny?.active_project_id && 
-                  (bestMatch.property.toLowerCase() === metadata?.active_project?.toLowerCase())) {
-            propertyId = metadataAny.active_project_id;
-        }
-        
-        return {
-            propertyDetected: true,
-            detectedProperty: bestMatch.property,
-            shouldUpdateActiveProject: true,
-            isScheduleRequest: true,
-            schedulePropertyId: propertyId,
-            confidence: bestMatch.confidence
-        };
-    }
-    
-    // Scheduling detected but no clear property - might use active project
-    console.log("[detectPropertyInMessage] Scheduling detected but no clear property reference");
-    return { 
-        isScheduleRequest: true,
-        propertyDetected: false,
-        message: "Scheduling intent detected but property unclear"
-    };
 };
 
 const findPropertyMatches = (text: string, project_names: string[]): PropertyMatch[] => {

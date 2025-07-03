@@ -26,17 +26,12 @@ export const updateActiveProject = async ({ project_name }: { project_name: stri
     
     console.log(`[updateActiveProject] Success: Active project changed from "${previousActiveProject}" to "${project_name}"`);
     
-    // CRITICAL: Return a hint to call getProjectDetails to show information about the newly active property
+    // ✅ FIXED: Remove suggested_next_action to let LLM choose the appropriate tool
+    // The agent will now intelligently choose between lookupProperty, getProjectDetails, etc.
     return { 
         success: true, 
         active_project: project_name,
         active_project_id: metadataAny?.active_project_id,
-        // Suggest the next tool to call to continue the conversation flow
-        suggested_next_action: {
-            tool_name: "getProjectDetails",
-            reason: "Show information about the newly active property",
-            project_name: project_name
-        },
-        message: `Successfully updated active project to ${project_name}. Now getting project details...`
+        message: `Successfully updated active project to ${project_name}.`
     };
 }; 

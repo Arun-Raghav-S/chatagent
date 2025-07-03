@@ -1,6 +1,5 @@
 import { AgentConfig, AgentMetadata as BaseAgentMetadata, TranscriptItem } from "@/types/types"; // Adjusted path
 import {
-  trackUserMessage,
   detectPropertyInMessage,
   updateActiveProject,
   fetchOrgMetadata,
@@ -29,7 +28,7 @@ interface AgentMetadata extends BaseAgentMetadata {
   user_question_count?: number;
 }
 
-// Add interface for property detection response
+// Interface for property detection response
 interface PropertyDetectionResult {
   propertyDetected: boolean;
   detectedProperty?: string;
@@ -144,8 +143,21 @@ E. AFFIRMATIVE RESPONSE TO SEE PROPERTIES
 F. PROPERTY-RELATED QUESTIONS (non-scheduling)  
    1. \`detectPropertyInMessage()\`  
    2. If \`shouldUpdateActiveProject\` → \`updateActiveProject()\`  
-   3. Choose and call the proper tool (see Section 3).  
-   4. Reply according to the UI hint or informational tool rules.
+   3. **Choose ONE tool** based on query type:
+      
+      **Use \`lookupProperty()\` for most questions:**
+      - Floor plans, amenities, features, specifications
+      - Price details, descriptions, comparisons
+      - Any detailed property questions
+      
+      **Use specific tools only when explicitly requested:**
+      - "Show me images" → \`getPropertyImages()\`
+      - "Show me brochure" → \`showPropertyBrochure()\` 
+      - "Where is this" → \`showPropertyLocation()\`
+      - "See all properties" → \`getProjectDetails()\`
+      
+   4. **CRITICAL**: Call only ONE tool after steps 1-2, then respond with its message
+   5. Reply according to the UI hint or informational tool rules.
    Fallback • If property unclear, use active project or ask for clarification.
 
 G. SYSTEM TRIGGER MESSAGES  
@@ -222,10 +234,19 @@ SECTION 6 • EXAMPLES  (strictly follow these patterns)
 3. User: "Where is this property located?"  
    Agent: \`detectPropertyInMessage\` → maybe \`updateActiveProject\` → \`showPropertyLocation\` → **reply with tool's message only**.
 
-4. User: "Tell me about the tower project" (unclear property name)
+4. User: "Show me ur floor plans" / "floor plans of insignia"
+   Agent: \`detectPropertyInMessage\` → maybe \`updateActiveProject\` → \`lookupProperty\` with query "floor plans" → **reply with semantic search results**.
+
+5. User: "What amenities does this property have?"
+   Agent: \`detectPropertyInMessage\` → maybe \`updateActiveProject\` → \`lookupProperty\` with query "amenities" → **reply with semantic search results**.
+
+6. User: "Tell me about the features of this property"
+   Agent: \`detectPropertyInMessage\` → maybe \`updateActiveProject\` → \`lookupProperty\` with query "features and specifications" → **reply with semantic search results**.
+
+7. User: "Tell me about the tower project" (unclear property name)
    Agent: \`detectPropertyInMessage\` → if low confidence → "Which property are you interested in? I can help with [list properties]."
 
-5. Tool failure scenario:
+8. Tool failure scenario:
    User: "Show me images"  
    Agent: \`detectPropertyInMessage\` → \`getPropertyImages\` fails → "I'd love to show you images of our properties! Let me get those for you."
 
@@ -304,14 +325,14 @@ const realEstateAgent: AgentConfig = {
       type: "function",
       name: "lookupProperty",
       description:
-        "Queries for property details (e.g., address, price, features). Use when the user asks specifics about properties.",
+        "🎯 PREFERRED TOOL: Intelligent semantic search for property questions. Use this for: amenities, features, price details, floor plans, specifications, comparisons, and ANY complex property questions that need smart search. This tool provides the most accurate and detailed answers.",
       parameters: {
         type: "object",
         properties: {
           query: {
             type: "string",
             description:
-              "A natural language query describing the property or information needed.",
+              "A natural language query describing exactly what the user wants to know (e.g., 'floor plans of insignia', 'amenities in this property', 'price details').",
           },
           k: {
             type: "number",
@@ -415,7 +436,7 @@ const realEstateAgent: AgentConfig = {
       type: "function",
       name: "getProjectDetails",
       description:
-        "Retrieves comprehensive details about a specific property directly from the database. Use when you need precise property information without semantic search.",
+        "🏢 BASIC OVERVIEW TOOL: Gets basic property overview/summary for display. Use ONLY for: simple property lists, basic overviews, or when user asks to 'see all properties'. For detailed questions, use lookupProperty instead.",
       parameters: {
         type: "object",
         properties: {
@@ -492,7 +513,7 @@ const realEstateAgent: AgentConfig = {
   toolLogic: {
     // --- Internal Tools --- 
     detectPropertyInMessage: async ({ message }: { message: string }) => {
-        return await detectPropertyInMessage({ message }, realEstateAgent);
+        return await detectPropertyInMessage({ message }, realEstateAgent as { metadata: AgentMetadata });
     },
 
     updateActiveProject: async ({ project_name }: { project_name: string }) => {
@@ -505,15 +526,15 @@ const realEstateAgent: AgentConfig = {
 
     // --- User Facing Tools --- 
 
-    getProjectDetails: async ({ project_id, project_name }: { project_id?: string; project_name?: string }, transcript: TranscriptItem[] = []) => {
-        return await getProjectDetails({ project_id, project_name }, realEstateAgent, transcript);
+    getProjectDetails: async ({ project_id, project_name }: { project_id?: string; project_name?: string }, _transcript: TranscriptItem[] = []) => {
+        return await getProjectDetails({ project_id, project_name }, realEstateAgent);
     },
 
     getPropertyImages: async ({ property_name, query }: { property_name?: string; query?: string }, transcript: TranscriptItem[] = []) => {
         return await getPropertyImages({ property_name, query }, realEstateAgent, transcript);
     },
 
-    initiateScheduling: async ({}: {}, transcript: TranscriptItem[] = []) => {
+    initiateScheduling: async (_params: Record<string, never>, _transcript: TranscriptItem[] = []) => {
         return await initiateScheduling({}, realEstateAgent);
     },
 

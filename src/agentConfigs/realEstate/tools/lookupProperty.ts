@@ -187,7 +187,7 @@ export const lookupProperty = async ({ query, k = 3 }: { query: string; k?: numb
                     },
                     search_results: result.properties,
                     message: result.message || `Here are the details for ${property.name}.`,
-                    ui_display_hint: 'PROPERTY_DETAILS',
+                    ui_display_hint: 'CHAT',
                 };
             } else {
                 // Multiple properties - show property list UI
@@ -206,8 +206,8 @@ export const lookupProperty = async ({ query, k = 3 }: { query: string; k?: numb
                 return {
                     properties: processedProperties,
                     search_results: result.properties, 
-                    message: result.message || `I found ${result.properties.length} properties matching "${query}". You can click on the cards below for more details.`,
-                    ui_display_hint: 'PROPERTY_LIST',
+                    message: result.message || `I found ${result.properties.length} properties matching "${query}".`,
+                    ui_display_hint: 'CHAT',
                 };
             }
         } else {
