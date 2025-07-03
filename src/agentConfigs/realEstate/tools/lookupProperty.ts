@@ -100,6 +100,8 @@ const calculateSimilarity = (str1: string, str2: string): number => {
     return intersection.size / union.size;
 };
 
+
+
 export const lookupProperty = async ({ query, k = 3 }: { query: string; k?: number }, realEstateAgent: any, transcript: TranscriptItem[] = []) => {
     console.log(`[lookupProperty] Querying edge function: "${query}", k=${k}`);
     

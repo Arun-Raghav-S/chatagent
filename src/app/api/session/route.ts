@@ -28,6 +28,7 @@ export async function POST() {
         body: JSON.stringify({
           // Define session parameters as needed by OpenAI
           model: "gpt-4o-mini-realtime-preview-2024-12-17",
+          // Response length controls for concise answers
           // Add any other required parameters here if needed based on OpenAI docs
         }),
       }

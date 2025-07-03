@@ -297,6 +297,8 @@ export function useSession(
           },
           turn_detection: turnDetection,
           tools: currentAgent.tools || [],
+          // Response length controls for concise answers
+         
         },
       }
 

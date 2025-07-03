@@ -106,36 +106,56 @@ const useDebounce = (callback: (...args: unknown[]) => void, delay: number) => {
   }, [callback, delay])
 }
 
+// Function to calculate dynamic text size based on message length
+const getDynamicTextSize = (text: string): string => {
+  const length = text.length;
+  if (length <= 100) return "text-xl"; // Short messages - large text
+  if (length <= 200) return "text-lg"; // Medium messages - medium text
+  if (length <= 400) return "text-base"; // Long messages - base text
+  return "text-sm"; // Very long messages - small text
+};
+
+// Function to calculate dynamic container width based on message length
+const getDynamicContainerWidth = (text: string): string => {
+  const length = text.length;
+  if (length <= 100) return "max-w-sm"; // Short messages - narrow container
+  if (length <= 200) return "max-w-md"; // Medium messages - medium container
+  if (length <= 400) return "max-w-lg"; // Long messages - wide container
+  return "max-w-xl"; // Very long messages - extra wide container
+};
+
 // Markdown component for rendering agent messages with proper styling
 const MarkdownMessage = ({ children, textColor }: { children: string; textColor: string }) => {
+  const dynamicTextSize = getDynamicTextSize(children);
+  
   return (
     <div className="markdown-content text-left">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          // Custom styling for markdown elements
+          // Custom styling for markdown elements with dynamic sizing
           p: ({ children }) => (
-            <p className="mb-2 leading-relaxed" style={{ color: textColor }}>
+            <p className={`mb-2 leading-relaxed ${dynamicTextSize}`} style={{ color: textColor }}>
               {children}
             </p>
           ),
           ul: ({ children }) => (
-            <ul className="list-disc list-inside mb-2 space-y-1" style={{ color: textColor }}>
+            <ul className={`list-disc list-inside mb-2 space-y-1 ${dynamicTextSize}`} style={{ color: textColor }}>
               {children}
             </ul>
           ),
           li: ({ children }) => (
-            <li className="leading-relaxed" style={{ color: textColor }}>
+            <li className={`leading-relaxed ${dynamicTextSize}`} style={{ color: textColor }}>
               {children}
             </li>
           ),
           strong: ({ children }) => (
-            <strong className="font-semibold" style={{ color: textColor }}>
+            <strong className={`font-semibold ${dynamicTextSize}`} style={{ color: textColor }}>
               {children}
             </strong>
           ),
           em: ({ children }) => (
-            <em className="italic" style={{ color: textColor }}>
+            <em className={`italic ${dynamicTextSize}`} style={{ color: textColor }}>
               {children}
             </em>
           ),
@@ -1418,7 +1438,7 @@ export default function RealEstateAgent({ chatbotConfig }: RealEstateAgentProps)
                 >
                   {lastAgentTextMessage && (
                     <motion.div 
-                      className="text-xl font-medium italic mb-10 max-w-md text-center"
+                      className={`font-medium italic mb-10 ${getDynamicContainerWidth(lastAgentTextMessage)} text-center`}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={INSTANT_TRANSITION}
