@@ -28,15 +28,15 @@ interface AgentMetadata extends BaseAgentMetadata {
   user_question_count?: number;
 }
 
-// Interface for property detection response
-interface PropertyDetectionResult {
-  propertyDetected: boolean;
-  detectedProperty?: string;
-  shouldUpdateActiveProject?: boolean;
-  message?: string;
-  isScheduleRequest?: boolean;
-  schedulePropertyId?: string | null;
-}
+// Interface for property detection response (kept for potential future use)
+// interface PropertyDetectionResult {
+//   propertyDetected: boolean;
+//   detectedProperty?: string;
+//   shouldUpdateActiveProject?: boolean;
+//   message?: string;
+//   isScheduleRequest?: boolean;
+//   schedulePropertyId?: string | null;
+// }
 
 // Dynamic instructions function - receives metadata object
 export const getInstructions = (metadata: AgentMetadata | undefined | null) => {
@@ -72,6 +72,8 @@ export const getInstructions = (metadata: AgentMetadata | undefined | null) => {
 
 **CRITICAL INSTRUCTION**: You MUST respond in 1-2 short sentences only. Do not list details unless specifically asked for "full details". Summarize, don't elaborate.
 
+**INTENT DETECTION PRIORITY**: Use your advanced LLM reasoning to identify user intent. When a user responds to "Would you like to see properties?" with ANY positive-leaning response (yes, okay, sure, alright, cool, etc.), immediately show properties via getProjectDetails(). Be generous in interpreting positive intent - err on the side of being helpful rather than asking for clarification.
+
 **FORMATTING**: Always format your responses in markdown for better visual presentation. Use **bold** for emphasis, bullet points for lists, and proper formatting to make responses look attractive.
 
 ────────────────────────────────────────────────────────
@@ -81,7 +83,7 @@ SECTION 0 • AGENT IDENTITY & CURRENT CONTEXT
 • Customer: **${safeMetadata.customer_name || "Not provided"}**.  
 • Verified: **${safeMetadata.is_verified ? "✅" : "❌"}** • Scheduled: **${safeMetadata.has_scheduled ? "✅" : "❌"}**  
 • Language: **${safeMetadata.language}**  
-• Flow context: **${(safeMetadata as any).flow_context || "none"}**
+• Flow context: **${safeMetadata.flow_context || "none"}**
 
 ────────────────────────────────────────────────────────
 SECTION 1 • GLOBAL RESPONSE RULES  (APPLY TO EVERY TURN)
@@ -117,6 +119,8 @@ SECTION 1 • GLOBAL RESPONSE RULES  (APPLY TO EVERY TURN)
 ────────────────────────────────────────────────────────
 SECTION 2 • CRITICAL TRIGGERS (ordered by priority)
 
+**PRIORITY RULE**: Always process trigger E (AFFIRMATIVE RESPONSE) before other triggers when the user's message could be interpreted as positive intent to see properties.
+
 A. AUTOMATIC BOOKING CONFIRMATION  
    Condition • Agent is invoked with \`flow_context = "from_scheduling_verification"\`  
    Action     • Call \`completeScheduling()\` immediately, no text.
@@ -142,8 +146,18 @@ D. GREETING
    – Skip \`detectPropertyInMessage\` for pure greetings.
 
 E. AFFIRMATIVE RESPONSE TO SEE PROPERTIES  
-   This covers any positive reply to the greeting or to a direct offer to see properties.  
-   Recognition examples: "Yes", "Yeah", "Yep", "Sure", "Okay", "OK", "Please", "Absolutely", "Of course", "Show me", "I would like to", etc.  
+   **CRITICAL**: This trigger must be EXTREMELY robust to catch ALL types of positive responses.
+   
+   **Intent Detection**: Use your LLM reasoning to identify if the user is expressing ANY form of agreement, interest, or positive response to seeing properties. This includes:
+   - Direct affirmations: "Yes", "Yeah", "Yep", "Sure", "Okay", "OK", "Alright", "Fine"
+   - Polite agreements: "Please", "Absolutely", "Of course", "Certainly", "Definitely"  
+   - Interest expressions: "Show me", "I would like to", "Let's see", "Go ahead", "Sounds good"
+   - Casual responses: "Cool", "Nice", "Great", "Perfect", "Awesome"
+   - Non-English equivalents in user's language
+   - Even unclear but positive-leaning responses like "maybe", "I guess", "why not"
+   
+   **Key Rule**: If there's ANY indication the user wants to see properties or is responding positively to the offer, treat it as affirmative. When in doubt, err on the side of showing properties rather than asking clarifying questions.
+   
    Mandatory sequence (execute exactly in this order—ignore the result of property detection):   
      1. **Immediately** call \`getProjectDetails()\` with **no parameters**.  
      2. Respond with **only** the \`message\` field from \`getProjectDetails\`.  
@@ -294,9 +308,9 @@ Remember: be robust, handle failures gracefully, never break conversation flow, 
     is_verified: safeMetadata.is_verified,
     has_scheduled: safeMetadata.has_scheduled,
     customer_name: safeMetadata.customer_name,
-    selectedDate: (safeMetadata as any).selectedDate,
-    selectedTime: (safeMetadata as any).selectedTime,
-    property_name: (safeMetadata as any).property_name
+    selectedDate: safeMetadata.selectedDate,
+    selectedTime: safeMetadata.selectedTime,
+    property_name: safeMetadata.property_name
   });
 
   return instructions;
@@ -545,7 +559,7 @@ const realEstateAgent: AgentConfig = {
 
     // --- User Facing Tools --- 
 
-    getProjectDetails: async ({ project_id, project_name }: { project_id?: string; project_name?: string }, _transcript: TranscriptItem[] = []) => {
+    getProjectDetails: async ({ project_id, project_name }: { project_id?: string; project_name?: string }) => {
         return await getProjectDetails({ project_id, project_name }, realEstateAgent);
     },
 
@@ -553,19 +567,19 @@ const realEstateAgent: AgentConfig = {
         return await getPropertyImages({ property_name, query }, realEstateAgent, transcript);
     },
 
-    initiateScheduling: async (_params: Record<string, never>, _transcript: TranscriptItem[] = []) => {
+    initiateScheduling: async () => {
         return await initiateScheduling({}, realEstateAgent);
     },
 
-    lookupProperty: async ({ query, k = 3 }: { query: string; k?: number }, transcript: TranscriptItem[] = []) => {
+    lookupProperty: async ({ query, k = 3 }: { query: string; k?: number }) => {
         return await lookupProperty({ query, k }, realEstateAgent);
     },
 
     calculateRoute: async ({ origin, destination_property }: { origin: string; destination_property: string }, transcript: TranscriptItem[] = []) => {
         return await calculateRoute({ origin, destination_property }, realEstateAgent, transcript);
     },
-    findNearestPlace: async ({ query, reference_property }: { query: string; reference_property: string }, transcript: TranscriptItem[] = []) => {
-        return await findNearestPlace({ query, reference_property }, realEstateAgent, transcript);
+    findNearestPlace: async ({ query, reference_property }: { query: string; reference_property: string }) => {
+        return await findNearestPlace({ query, reference_property }, realEstateAgent);
     },
     
     completeScheduling: async () => {
