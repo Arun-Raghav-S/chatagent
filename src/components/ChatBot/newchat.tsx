@@ -14,6 +14,8 @@ import {
   ArrowLeft,
   CheckCircle,
 } from "lucide-react"
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 // UI Components
 import PropertyList from "../PropertyComponents/PropertyList"
@@ -103,6 +105,84 @@ const useDebounce = (callback: (...args: unknown[]) => void, delay: number) => {
     timeoutRef.current = setTimeout(() => callback(...args), delay)
   }, [callback, delay])
 }
+
+// Markdown component for rendering agent messages with proper styling
+const MarkdownMessage = ({ children, textColor }: { children: string; textColor: string }) => {
+  return (
+    <div className="markdown-content text-left">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          // Custom styling for markdown elements
+          p: ({ children }) => (
+            <p className="mb-2 leading-relaxed" style={{ color: textColor }}>
+              {children}
+            </p>
+          ),
+          ul: ({ children }) => (
+            <ul className="list-disc list-inside mb-2 space-y-1" style={{ color: textColor }}>
+              {children}
+            </ul>
+          ),
+          li: ({ children }) => (
+            <li className="leading-relaxed" style={{ color: textColor }}>
+              {children}
+            </li>
+          ),
+          strong: ({ children }) => (
+            <strong className="font-semibold" style={{ color: textColor }}>
+              {children}
+            </strong>
+          ),
+          em: ({ children }) => (
+            <em className="italic" style={{ color: textColor }}>
+              {children}
+            </em>
+          ),
+          h1: ({ children }) => (
+            <h1 className="text-xl font-bold mb-2" style={{ color: textColor }}>
+              {children}
+            </h1>
+          ),
+          h2: ({ children }) => (
+            <h2 className="text-lg font-semibold mb-2" style={{ color: textColor }}>
+              {children}
+            </h2>
+          ),
+          h3: ({ children }) => (
+            <h3 className="text-base font-medium mb-1" style={{ color: textColor }}>
+              {children}
+            </h3>
+          ),
+          code: ({ children }) => (
+            <code 
+              className="px-1 py-0.5 rounded text-sm font-mono"
+              style={{ 
+                backgroundColor: `${textColor}20`,
+                color: textColor
+              }}
+            >
+              {children}
+            </code>
+          ),
+          blockquote: ({ children }) => (
+            <blockquote 
+              className="border-l-4 pl-4 italic mb-2"
+              style={{ 
+                borderColor: `${textColor}40`,
+                color: textColor
+              }}
+            >
+              {children}
+            </blockquote>
+          ),
+        }}
+      >
+        {children}
+      </ReactMarkdown>
+    </div>
+  );
+};
 
 // Helper function to determine if a message should be hidden from UI (pending questions, UI-generated messages, etc.)
 const shouldHideFromUI = (text: string, agentName?: string): boolean => {
@@ -1337,15 +1417,16 @@ export default function RealEstateAgent({ chatbotConfig }: RealEstateAgentProps)
                   exit="exit"
                 >
                   {lastAgentTextMessage && (
-                    <motion.p 
-                      className="text-xl font-medium italic mb-10"
-                      style={{ color: textColor }}
+                    <motion.div 
+                      className="text-xl font-medium italic mb-10 max-w-md text-center"
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={INSTANT_TRANSITION}
                     >
-                      {lastAgentTextMessage}
-                    </motion.p>
+                      <MarkdownMessage textColor={textColor}>
+                        {lastAgentTextMessage}
+                      </MarkdownMessage>
+                    </motion.div>
                   )}
                   
                   {/* OPTION 1: Animated Hint Bubbles */}
